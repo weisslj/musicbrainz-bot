@@ -47,8 +47,10 @@ for line in open('Scripts.txt'):
         range = tuple(int(a, 16) for a in range_str.split('..'))
     else:
         range = (int(range_str, 16), int(range_str, 16))
-    script_ranges.setdefault(script, []).append(range)
-
+    if script in script_ranges and range[0] - script_ranges[script][-1][1] == 1:
+        script_ranges[script][-1] = (script_ranges[script][-1][0], range[1])
+    else:
+        script_ranges.setdefault(script, []).append(range)
 
 def is_in_script(text, scripts):
     regex = ''
