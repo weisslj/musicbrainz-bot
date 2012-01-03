@@ -42,6 +42,7 @@ WHERE
         ((a.type IS NULL OR a.type = 1) AND (a.begin_date_year IS NULL OR a.gender IS NULL)) OR
         ((a.type IS NULL OR a.type = 2) AND (a.begin_date_year IS NULL))
     ) AND
+    l.edits_pending = 0 AND
     u.url LIKE 'http://en.wikipedia.org/wiki/%%'
 ORDER BY a.id
 LIMIT 10000
@@ -468,6 +469,7 @@ category_countries = {
     'Singaporean': 'SG',
     'Filipino': 'PH',
     'Republic of the Congo': 'CG',
+    'Mozambican': 'MZ',
 }
 
 
@@ -725,7 +727,7 @@ def determine_country(page):
         all_countries.update(countries)
         all_reasons.append(reason)
         has_categories = True
-    if len(all_reasons) < 2 or not all_countries or not has_categories:
+    if len(all_reasons) < 1 or not all_countries or not has_categories:
         out(' * not enough sources for countries', all_countries, all_reasons)
         return None, []
     if len(all_countries) > 1:
@@ -842,7 +844,7 @@ for artist in db.execute(query):
         for field, reason in reasons:
             edit_note += '\n\n%s:\n%s' % (field, ' '.join(reason))
         out(' * edit note:', edit_note.replace('\n', ' '))
-        time.sleep(10)
+        time.sleep(60 * 2)
         mb.edit_artist(artist, update, edit_note)
 
     db.execute("INSERT INTO bot_wp_artist_data (gid) VALUES (%s)", (artist['gid'],))
