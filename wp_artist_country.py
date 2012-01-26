@@ -8,7 +8,8 @@ from editing import MusicBrainzClient
 import pprint
 import urllib
 import time
-from utils import mangle_name, join_names, mw_remove_markup, out
+from mbbot.utils.pidfile import PIDFile
+from utils import mangle_name, join_names, mw_remove_markup, out, get_page_content, extract_page_title
 import config as cfg
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
@@ -45,7 +46,7 @@ WHERE
     l.edits_pending = 0 AND
     u.url LIKE 'http://en.wikipedia.org/wiki/%%'
 ORDER BY a.id
-LIMIT 10000
+LIMIT 100
 """
 
 performance_name_query = """
@@ -53,43 +54,6 @@ SELECT count(*) FROM l_artist_artist
 WHERE link IN (SELECT id FROM link WHERE link_type = 108)
 AND entity1 = %s
 """
-
-def get_page_content_from_cache(title):
-    key = title.encode('ascii', 'xmlcharrefreplace').replace('/', '_')
-    file = os.path.join('enwiki-cache', key[0], key)
-    if os.path.exists(file):
-        return open(file).read().decode('utf8')
-
-
-def add_page_content_to_cache(title, content):
-    key = title.encode('ascii', 'xmlcharrefreplace').replace('/', '_')
-    dir = os.path.join('enwiki-cache', key[0])
-    if not os.path.exists(dir):
-        os.mkdir(dir)
-    file = os.path.join(dir, key)
-    f = open(file, 'w')
-    f.write(content.encode('utf8'))
-    f.close()
-
-
-def get_page_content(wp, title):
-    content = get_page_content_from_cache(title)
-    if content:
-        return content
-    resp = wp.call({'action': 'query', 'prop': 'revisions', 'titles': title, 'rvprop': 'content'})
-    pages = resp['query']['pages'].values()
-    if not pages or 'revisions' not in pages[0]:
-        return None
-    content = pages[0]['revisions'][0].values()[0]
-    add_page_content_to_cache(title, content)
-    return content
-
-
-def extract_page_title(url):
-    prefix = 'http://en.wikipedia.org/wiki/'
-    if not url.startswith(prefix):
-        return None
-    return urllib.unquote(url[len(prefix):].encode('utf8')).decode('utf8')
 
 
 category_re = re.compile(r'\[\[Category:(.+?)(?:\|.*?)?\]\]')
@@ -442,6 +406,7 @@ category_countries = {
     'Russian': 'RU',
     'Hungarian': 'HU',
     'Slovak': 'SK',
+    'Slovenian': 'SI',
     'Czech': 'CZ',
     'Ukrainian': 'UA',
     'Turkish': 'TR',
@@ -682,7 +647,7 @@ def determine_country_from_text(page):
 
 
 country_ids = {}
-for id, code in db.execute("SELECT id, iso_code FROM country"):
+for id, code in db.execute("SELECT id, iso_code FROM musicbrainz.country"):
     country_ids[code] = id
 
 gender_ids = {}
@@ -781,72 +746,78 @@ def determine_type(page):
     return type_id, all_reasons
 
 
-seen = set()
-for artist in db.execute(query):
-    if artist['id'] in seen:
-        continue
-    seen.add(artist['id'])
-    out('Looking up artist "%s" http://musicbrainz.org/artist/%s' % (artist['name'], artist['gid']))
-    out(' * wiki:', artist['url'])
+def main():
+    seen = set()
+    for artist in db.execute(query):
+        if artist['id'] in seen:
+            continue
+        seen.add(artist['id'])
+        out('Looking up artist "%s" http://musicbrainz.org/artist/%s' % (artist['name'], artist['gid']))
+        out(' * wiki:', artist['url'])
 
-    artist = dict(artist)
-    update = set()
-    reasons = []
+        artist = dict(artist)
+        update = set()
+        reasons = []
 
-    page = WikiPage.fetch(artist['url'])
+        page = WikiPage.fetch(artist['url'])
 
-    if not artist['country']:
-        country_id, country_reasons = determine_country(page)
-        if country_id:
-            artist['country'] = country_id
-            update.add('country')
-            reasons.append(('COUNTRY', country_reasons))
+        if not artist['country']:
+            country_id, country_reasons = determine_country(page)
+            if country_id:
+                artist['country'] = country_id
+                update.add('country')
+                reasons.append(('COUNTRY', country_reasons))
 
-    if not artist['type']:
-        type_id, type_reasons = determine_type(page)
-        if type_id:
-            artist['type'] = type_id
-            update.add('type')
-            reasons.append(('TYPE', type_reasons))
+        if not artist['type']:
+            type_id, type_reasons = determine_type(page)
+            if type_id:
+                artist['type'] = type_id
+                update.add('type')
+                reasons.append(('TYPE', type_reasons))
 
-    if not artist['gender'] and artist['type'] == 1:
-        gender_id, gender_reasons = determine_gender(page)
-        if gender_id:
-            artist['gender'] = gender_id
-            update.add('gender')
-            reasons.append(('GENDER', gender_reasons))
+        if not artist['gender'] and artist['type'] == 1:
+            gender_id, gender_reasons = determine_gender(page)
+            if gender_id:
+                artist['gender'] = gender_id
+                update.add('gender')
+                reasons.append(('GENDER', gender_reasons))
 
-    is_performance_name = False
-    if artist['type'] == 1:
-        is_performance_name = db.execute(performance_name_query, artist['id']).scalar() > 0
-        print " * checking for performance name", is_performance_name
+        is_performance_name = False
+        if artist['type'] == 1:
+            is_performance_name = db.execute(performance_name_query, artist['id']).scalar() > 0
+            out(" * checking for performance name", is_performance_name)
 
-    if not artist['begin_date_year'] and not artist['end_date_year']:
-        begin_date, begin_date_reasons = determine_begin_date(artist, page, is_performance_name)
-        if begin_date['year']:
-            out(" * new begin date", begin_date)
-            artist['begin_date_year'] = begin_date['year']
-            artist['begin_date_month'] = begin_date['month']
-            artist['begin_date_day'] = begin_date['day']
-            update.add('begin_date')
-            reasons.append(('BEGIN DATE', begin_date_reasons))
-        end_date, end_date_reasons = determine_end_date(artist, page, is_performance_name)
-        if end_date['year']:
-            out(" * new end date", end_date)
-            artist['end_date_year'] = end_date['year']
-            artist['end_date_month'] = end_date['month']
-            artist['end_date_day'] = end_date['day']
-            update.add('end_date')
-            reasons.append(('END DATE', end_date_reasons))
+        if not artist['begin_date_year'] and not artist['end_date_year']:
+            begin_date, begin_date_reasons = determine_begin_date(artist, page, is_performance_name)
+            if begin_date['year']:
+                out(" * new begin date", begin_date)
+                artist['begin_date_year'] = begin_date['year']
+                artist['begin_date_month'] = begin_date['month']
+                artist['begin_date_day'] = begin_date['day']
+                update.add('begin_date')
+                reasons.append(('BEGIN DATE', begin_date_reasons))
+            end_date, end_date_reasons = determine_end_date(artist, page, is_performance_name)
+            if end_date['year']:
+                out(" * new end date", end_date)
+                artist['end_date_year'] = end_date['year']
+                artist['end_date_month'] = end_date['month']
+                artist['end_date_day'] = end_date['day']
+                update.add('end_date')
+                reasons.append(('END DATE', end_date_reasons))
 
-    if update:
-        edit_note = 'From %s' % (artist['url'],)
-        for field, reason in reasons:
-            edit_note += '\n\n%s:\n%s' % (field, ' '.join(reason))
-        out(' * edit note:', edit_note.replace('\n', ' '))
-        time.sleep(60 * 2)
-        mb.edit_artist(artist, update, edit_note)
+        if update:
+            edit_note = 'From %s' % (artist['url'],)
+            for field, reason in reasons:
+                edit_note += '\n\n%s:\n%s' % (field, ' '.join(reason))
+            out(' * edit note:', edit_note.replace('\n', ' '))
+            time.sleep(10)
+            mb.edit_artist(artist, update, edit_note)
 
-    db.execute("INSERT INTO bot_wp_artist_data (gid) VALUES (%s)", (artist['gid'],))
-    print
+        db.execute("INSERT INTO bot_wp_artist_data (gid) VALUES (%s)", (artist['gid'],))
+        out()
+
+
+if __name__ == '__main__':
+    with PIDFile('/tmp/mbbot_wp_artist_country.pid'):
+        main()
 
