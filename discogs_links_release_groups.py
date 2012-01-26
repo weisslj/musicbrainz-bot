@@ -28,7 +28,8 @@ WHERE rg.id IN (
     JOIN release ON rg.id = release.release_group
     JOIN l_release_url l_ru ON release.id = l_ru.entity0
     JOIN link l ON l_ru.link = l.id
-    WHERE l.link_type = 76
+    WHERE l.link_type = 76 AND rg.edits_pending = 0 AND release.edits_pending = 0
+        AND l_ru.edits_pending = 0
     
     EXCEPT
     
