@@ -30,11 +30,14 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 CREATE TABLE bot_wp_artist_data (
     gid uuid NOT NULL,
     lang character varying(2),
-    processed timestamp with time zone DEFAULT now()
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_wp_artist_data_pkey PRIMARY KEY (gid, lang)
 );
 
-ALTER TABLE ONLY bot_wp_artist_data
-    ADD CONSTRAINT bot_wp_artist_data_pkey PRIMARY KEY (gid, lang);
+CREATE TABLE bot_wp_artist_data_ignore (
+    gid uuid NOT NULL,
+    CONSTRAINT bot_wp_artist_data_ignore_pkey PRIMARY KEY (gid)
+);
 
 """
 
@@ -52,8 +55,10 @@ FROM s_artist a
 JOIN l_artist_url l ON l.entity0 = a.id AND l.link IN (SELECT id FROM link WHERE link_type = 179)
 JOIN url u ON u.id = l.entity1
 LEFT JOIN bot_wp_artist_data b ON a.gid = b.gid
+LEFT JOIN bot_wp_artist_data_ignore bi ON a.gid = bi.gid
 WHERE
     b.gid IS NULL AND
+    bi.gid IS NULL AND
     (
         a.country IS NULL OR
         a.type IS NULL OR
