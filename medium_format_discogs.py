@@ -40,6 +40,7 @@ WITH
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity1 = u.id AND l_release_url.entity0 <> r.id)
             /* this release should not have another discogs link attached */
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id)
+            AND l.edits_pending = 0
     )
 SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position
 FROM vinyl_releases ta

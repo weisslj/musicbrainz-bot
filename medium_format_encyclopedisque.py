@@ -38,6 +38,7 @@ WITH
         WHERE u.url LIKE 'http://www.encyclopedisque.fr/images/%%'
             AND (m.format IS NULL OR m.format = 7)
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity1 = u.id AND l_release_url.entity0 <> r.id)
+            AND l.edits_pending = 0
     )
 SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position
 FROM releases_wo_7inch ta
