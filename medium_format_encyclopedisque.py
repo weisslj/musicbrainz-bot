@@ -30,7 +30,7 @@ ALTER TABLE ONLY bot_encyclopedisque_medium_format
 query = """
 WITH
     releases_wo_7inch AS (
-        SELECT r.id, u.url, m.format
+        SELECT r.id, u.url, m.format, m.position
         FROM release r
             JOIN medium m ON m.release = r.id
             JOIN l_release_url l ON l.entity0 = r.id AND l.link IN (SELECT id FROM link WHERE link_type = 78)
@@ -39,7 +39,7 @@ WITH
             AND (m.format IS NULL OR m.format = 7)
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity1 = u.id AND l_release_url.entity0 <> r.id)
     )
-SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name
+SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position
 FROM releases_wo_7inch ta
 JOIN s_release r ON ta.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
@@ -49,12 +49,12 @@ ORDER BY r.artist_credit, r.id
 LIMIT 100
 """
 
-for id, gid, name, url, format, ac_name in db.execute(query):
+for id, gid, name, url, format, ac_name, position in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Looking up release "%s" by "%s" http://musicbrainz.org/release/%s' % (name, ac_name, gid))
 
     edit_note = 'Setting format to 7" based on attached link to Encyclopedisque (%s)' % url
     out(' * edit note: %s' % (edit_note,))
-    mb.set_release_medium_format(gid, format, 29, edit_note)
+    mb.set_release_medium_format(gid, position, format, 29, edit_note)
 
     time.sleep(5)
 

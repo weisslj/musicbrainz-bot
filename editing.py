@@ -191,7 +191,7 @@ class MusicBrainzClient(object):
     def set_release_script(self, entity_id, old_script_id, new_script_id, edit_note, auto=False):
         self._edit_release_information(entity_id, {"script_id": [[str(old_script_id)],[str(new_script_id)]]}, edit_note, auto)
 
-    def set_release_medium_format(self, entity_id, old_format_id, new_format_id, edit_note, auto=False):
+    def set_release_medium_format(self, entity_id, medium_number, old_format_id, new_format_id, edit_note, auto=False):
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
 
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
@@ -199,7 +199,7 @@ class MusicBrainzClient(object):
         self.b.submit(name="step_tracklist")
 
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
-        attributes = {"mediums.0.format_id": [[str(old_format_id)], [str(new_format_id)]]}
+        attributes = {"mediums.%s.format_id" % (medium_number-1): [[str(old_format_id)], [str(new_format_id)]]}
         changed = False
         for k, v in attributes.items():
             if self.b[k] != v[0]:
