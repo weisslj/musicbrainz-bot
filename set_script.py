@@ -4,6 +4,7 @@ import locale
 from collections import defaultdict
 import pprint
 import itertools
+import operator
 import urllib2
 import sqlalchemy
 from editing import MusicBrainzClient
@@ -33,30 +34,12 @@ JOIN medium m ON m.release = r.id
 WHERE r.id = %s
 '''
 
-query_release_artist_names = '''
-SELECT DISTINCT an.name, acn.join_phrase
-FROM release r
-JOIN artist_credit_name acn ON r.artist_credit = acn.artist_credit
-JOIN artist_name an ON an.id = acn.name
-WHERE r.id = %s
-'''
-
 query_track_names = '''
 SELECT DISTINCT tn.name
 FROM release r
 JOIN medium m ON m.release = r.id
 JOIN track t ON t.tracklist = m.tracklist
 JOIN track_name tn ON t.name = tn.id
-WHERE r.id = %s
-'''
-
-query_track_artist_names = '''
-SELECT DISTINCT an.name, acn.join_phrase
-FROM release r
-JOIN medium m ON m.release = r.id
-JOIN track t ON t.tracklist = m.tracklist
-JOIN artist_credit_name acn ON t.artist_credit = acn.artist_credit
-JOIN artist_name an ON an.id = acn.name
 WHERE r.id = %s
 '''
 
@@ -99,28 +82,22 @@ mb_to_iso15924 = dict((v['id'], k) for k, v in iso15924_to_mb.items())
 r_by_ac = defaultdict(list)
 for count_all, (ac, release, gid, release_name, old_script_id) in enumerate(db.execute(query_releases_with_unknown_script)):
     track_names = u''.join(track_name for (track_name,) in db.execute(query_track_names, release))
-    if len(track_names) <= 40:
-        #utils.out('too short http://musicbrainz.org/release/%s' % gid)
+    medium_names = u''.join(medium_name for (medium_name,) in db.execute(query_medium_names, release) if medium_name)
+    if len(track_names) < 5:
+        utils.out('too short http://musicbrainz.org/release/%s' % gid)
         continue
-    medium_names = list(set(medium_name for (medium_name,) in db.execute(query_medium_names, release) if medium_name))
-    track_acs = [x for x in list(set(itertools.chain(*[[name, join_phrase] for name, join_phrase in db.execute(query_track_artist_names, release)]))) if x]
-    release_acs = [x for x in list(set(itertools.chain(*[[name, join_phrase] for name, join_phrase in db.execute(query_release_artist_names, release)]))) if x]
-    scripts_tracks = get_scripts(track_names)
-    scripts = [s for s in scripts_tracks.keys() if s != 'Zyyy']
+    scripts = get_scripts(track_names + medium_names + release_name)
+    scripts_sorted = sorted(scripts.iteritems(), key=operator.itemgetter(1), reverse=True)
     stats[', '.join(scripts)] += 1
-    if len(scripts) == 1 and float(scripts_tracks[scripts[0]])/sum(scripts_tracks.values()) > 0.70:
-        script = scripts[0]
-        scripts_rest = [s for s in get_scripts(list(itertools.chain(*([release_name] + release_acs + medium_names + track_acs)))).keys() if s != 'Zyyy']
-        # allow Latin script on non-tracklist names for non-Latin releases
-        latin_rest = False
-        if script != 'Latn':
-            latin_rest = 'Latn' in scripts_rest
-            scripts_rest = [s for s in scripts_rest if s != 'Latn']
-        if script in whitelisted_iso_codes and [script] == scripts_rest and old_script_id != iso15924_to_mb[script]['id']:
-            #utils.out('http://musicbrainz.org/release/%s' % gid)
-            #utils.out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', script))
-            r_by_ac[ac].append((gid, old_script_id, script, scripts_tracks, latin_rest))
-
+    if (len(scripts) == 1 or (len(scripts) == 2 and 'Zyyy' in scripts)) and float(scripts_sorted[0][1])/sum(scripts.values()) > 0.40:
+        script = scripts_sorted[0][0]
+        #if script == 'Latn':
+        #    continue
+        if script in whitelisted_iso_codes and old_script_id != iso15924_to_mb[script]['id']:
+            utils.out('http://musicbrainz.org/release/%s' % gid)
+            utils.out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', script))
+            r_by_ac[ac].append((gid, old_script_id, script, scripts))
+#exit()
 pprint.pprint(dict(stats))
 r_grouped = r_by_ac.values()
 random.shuffle(r_grouped)
@@ -128,16 +105,13 @@ r_flat = list(itertools.chain(*r_grouped))
 count = len(r_flat)
 utils.out('script can be set for %d out of %d releases' % (count, count_all))
 
-for i, (gid, old_script_id, new_script, script_stats, latin_rest) in enumerate(r_flat):
+for i, (gid, old_script_id, new_script, script_stats) in enumerate(r_flat):
     utils.out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
     utils.out('http://musicbrainz.org/release/%s' % gid)
+    utils.out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', new_script))
     new_script_name = iso15924_to_mb[new_script]['name']
     new_script_id = iso15924_to_mb[new_script]['id']
-    text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>80%% and >40 characters), and no other (determined) script is on the tracklist. ' % new_script_name
-    if not latin_rest:
-        text += u'All other names on the release are also in %s. ' % new_script_name
-    else:
-        text += u'All other names on the release are in %s or in Latin. ' % new_script_name
+    text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
     if not old_script_id:
         old_script_id = ''
     for j in range(5):
