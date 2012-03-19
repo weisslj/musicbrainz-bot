@@ -125,7 +125,6 @@ def main():
     count = len(rgs)
     for i, (rg, gid, name) in enumerate(rgs):
         if gid in discogs_release_group_missing or gid in discogs_release_group_problematic:
-            out('skipping gid!')
             continue
         urls = set(url for url, in db.execute(query_rg_release_discogs, rg))
         out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
