@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
+import urllib2
 import sqlalchemy
 import discogs_client as discogs
 from editing import MusicBrainzClient
