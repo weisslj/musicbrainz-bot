@@ -130,7 +130,11 @@ def main():
         urls = set(url for url, in db.execute(query_rg_release_discogs, rg))
         out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
         out(u'%s http://musicbrainz.org/release-group/%s' % (name, gid))
-        masters = list(discogs_get_master(urls))
+        try:
+            masters = list(discogs_get_master(urls))
+        except discogs.HTTPError, e:
+            out(e)
+            continue
         if len(masters) == 0:
             out(u'  aborting, no Discogs master!')
             db.execute("INSERT INTO bot_discogs_release_group_missing (gid) VALUES (%s)", gid)
