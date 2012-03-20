@@ -158,6 +158,16 @@ def extract_page_title(url, wp_lang):
         return None
     return urllib.unquote(url[len(prefix):].encode('utf8')).decode('utf8')
 
+def wp_is_canonical_page(title, page_orig):
+    page = mangle_name(page_orig)
+    if 'redirect' in page:
+        return False, "redirect page"
+    if 'disambiguation' in title or \
+        '{{disambig' in page_orig.lower() or '{{disamb' in page_orig.lower() or \
+        'disambiguationpages' in page or \
+        'homonymie' in page:
+        return False, "disambiguation page"
+    return True, ""
 
 _unaccent_dict = {u'Æ': u'AE', u'æ': u'ae', u'Œ': u'OE', u'œ': u'oe', u'ß': 'ss'}
 _re_latin_letter = re.compile(r"^(LATIN [A-Z]+ LETTER [A-Z]+) WITH")
@@ -183,4 +193,5 @@ def escape_query(s):
     s = re.sub(r'\bAND\b', 'and', s)
     s = re.sub(r'\bNOT\b', 'not', s)
     s = re.sub(r'\+', '\\+', s)
+    s = re.sub(r'\-', '\\-', s)
     return s

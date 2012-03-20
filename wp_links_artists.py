@@ -11,7 +11,7 @@ import urllib
 import time
 from mbbot.wp.wikipage import WikiPage
 from mbbot.wp.analysis import determine_country
-from utils import mangle_name, join_names, out, colored_out, bcolors, escape_query
+from utils import mangle_name, join_names, out, colored_out, bcolors, escape_query, wp_is_canonical_page
 import config as cfg
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
@@ -111,20 +111,10 @@ for artist in db.execute(query, query_params):
             continue
         out(' * trying article "%s"' % (title,))
         page = mangle_name(page_orig)
-        if 'redirect' in page:
-            out(' * redirect page, skipping')
-            continue
-        if 'disambiguation' in title:
-            out(' * disambiguation page, skipping')
-            continue
-        if '{{disambig' in page_orig.lower() or '{{disamb' in page_orig.lower():
-            out(' * disambiguation page, skipping')
-            continue
-        if 'disambiguationpages' in page:
-            out(' * disambiguation page, skipping')
-            continue
-        if 'homonymie' in page:
-            out(' * disambiguation page, skipping')
+
+        is_canonical, reason = wp_is_canonical_page(title, page_orig)
+        if (not is_canonical):
+            out(' * %s, skipping' % reason)
             continue
         if 'infoboxalbum' in page:
             out(' * album page, skipping')
@@ -145,8 +135,8 @@ for artist in db.execute(query, query_params):
                 found_albums.append(album)
         ratio = len(found_albums) * 1.0 / len(albums)
         min_ratio = 0.15 if len(artist['name']) > 15 else 0.3
-        colored_out(bcolors.WARNING if ratio < min_ratio else bcolors.NONE, ' * ratio: %s, has albums: %s, found albums: %s' % (ratio, len(albums), len(found_albums)))
-        if ratio < min_ratio:
+        colored_out(bcolors.WARNING if (ratio < min_ratio and len(found_albums) > 0 and len(found_albums) < 3) else bcolors.NONE, ' * ratio: %s, has albums: %s, found albums: %s' % (ratio, len(albums), len(found_albums)))
+        if ratio < min_ratio and len(found_albums) < 3:
             continue
 
         # Check if wikipedia lang is compatible with artist country

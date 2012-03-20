@@ -9,7 +9,7 @@ from editing import MusicBrainzClient
 import pprint
 import urllib
 import time
-from utils import mangle_name, join_names, out, get_page_content, extract_page_title, colored_out, bcolors, escape_query
+from utils import mangle_name, join_names, out, get_page_content, extract_page_title, colored_out, bcolors, escape_query, wp_is_canonical_page
 import config as cfg
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
@@ -29,11 +29,9 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 CREATE TABLE bot_wp_rg_link (
     gid uuid NOT NULL,
     lang character varying(2),
-    processed timestamp with time zone DEFAULT now()
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_wp_rg_link_pkey PRIMARY KEY (gid, lang)
 );
-
-ALTER TABLE ONLY bot_wp_rg_link
-    ADD CONSTRAINT bot_wp_rg_link_pkey PRIMARY KEY (gid, lang);
 """
 
 
@@ -118,21 +116,12 @@ for rg_id, rg_gid, rg_name, ac_name, rg_type in db.execute(query, query_params):
         url = 'http://%s.wikipedia.org/wiki/%s' % (wp_lang, urllib.quote(page_title.encode('utf8').replace(' ', '_')),)
         colored_out(bcolors.HEADER, ' * trying article %s' % (title,))
         page = mangle_name(page_orig)
-        if 'redirect' in page:
-            out('  => redirect page, skipping')
+
+        is_canonical, reason = wp_is_canonical_page(title, page_orig)
+        if (not is_canonical):
+            out(' * %s, skipping' % reason)
             continue
-        if 'disambiguation' in title:
-            out('  => disambiguation page, skipping')
-            continue
-        if '{{disambig' in page_orig.lower():
-            out('  => disambiguation page, skipping')
-            continue
-        if 'disambiguationpages' in page:
-            out('  => disambiguation page, skipping')
-            continue
-        if 'homonymie' in page:
-            out('  => disambiguation page, skipping')
-            continue
+
         categories = category_re[wp_lang].findall(page_orig)
         is_album_page = False
         for category in categories:
