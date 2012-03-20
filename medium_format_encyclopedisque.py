@@ -55,7 +55,7 @@ for id, gid, name, url, format, ac_name, position in db.execute(query):
 
     edit_note = 'Setting format to 7" based on attached link to Encyclopedisque (%s)' % url
     out(' * edit note: %s' % (edit_note,))
-    mb.set_release_medium_format(gid, position, format, 29, edit_note)
+    mb.set_release_medium_format(gid, position, format, 29, edit_note, True)
 
     time.sleep(5)
 

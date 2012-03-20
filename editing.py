@@ -198,6 +198,11 @@ class MusicBrainzClient(object):
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_tracklist")
 
+        page = self.b.response().read()
+        if "This medium already has disc ID" in page:
+            print " * has a discid => medium format can't be set to a format that can't have disc IDs"
+            return
+
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
         attributes = {"mediums.%s.format_id" % (medium_number-1): [[str(old_format_id)], [str(new_format_id)]]}
         changed = False
@@ -218,8 +223,8 @@ class MusicBrainzClient(object):
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
             raise Exception('unable to post edit')
-        #try: self.b["as_auto_editor"] = ["1"] if auto else []
-        #except mechanize.ControlNotFoundError: pass
+        try: self.b["as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
         self.b.submit(name="save")
         page = self.b.response().read()
         if "Release information" not in page:

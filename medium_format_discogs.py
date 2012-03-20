@@ -57,13 +57,13 @@ def discogs_get_format(release_url):
     if m:
         release_id = int(m.group(1))
         release = discogs.Release(release_id)
-        format = release.data['formats'][0]
-        if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
-            return '12"'
-        if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
-            return '7"'
-        if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
-            return '10"'
+        for format in release.data['formats']:
+            if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
+                return '12"'
+            if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
+                return '7"'
+            if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
+                return '10"'
     return None
 
 DISCOGS_MB_FORMATS_MAPPING = {
@@ -82,7 +82,7 @@ for id, gid, name, url, format, ac_name, position in db.execute(query):
         colored_out(bcolors.HEADER, ' * using %s, found format: %s' % (url,discogs_format))
         edit_note = 'Setting medium format from attached Discogs link (%s)' % url
         out(' * edit note: %s' % (edit_note,))
-        mb.set_release_medium_format(gid, position, format, DISCOGS_MB_FORMATS_MAPPING[discogs_format], edit_note)
+        mb.set_release_medium_format(gid, position, format, DISCOGS_MB_FORMATS_MAPPING[discogs_format], edit_note, True)
         time.sleep(5)
     else:
         colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (url,))
