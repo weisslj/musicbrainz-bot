@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 import urllib2
+import socket
 import sqlalchemy
 import Levenshtein
 import discogs_client as discogs
@@ -131,7 +132,7 @@ def main():
         out(u'%s http://musicbrainz.org/release-group/%s' % (name, gid))
         try:
             masters = list(discogs_get_master(urls))
-        except discogs.HTTPError, e:
+        except (discogs.HTTPError, discogs.requests.ConnectionError) as e:
             out(e)
             continue
         if len(masters) == 0:
@@ -164,7 +165,7 @@ def main():
         try:
             mb.add_url('release_group', gid, 90, master_url, text, auto=(len(urls)>=2))
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
-        except urllib2.HTTPError, e:
+        except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
 
 if __name__ == '__main__':
