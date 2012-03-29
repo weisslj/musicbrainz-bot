@@ -49,7 +49,7 @@ JOIN s_artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_medium_format_discogs b ON r.gid = b.gid
 WHERE b.gid IS NULL
 ORDER BY r.artist_credit, r.id
-LIMIT 500
+LIMIT 1000
 """
 
 def discogs_get_format(release_url):
@@ -58,6 +58,8 @@ def discogs_get_format(release_url):
         release_id = int(m.group(1))
         release = discogs.Release(release_id)
         for format in release.data['formats']:
+            if ('descriptions' not in format):
+                continue
             if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
                 return '12"'
             if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
