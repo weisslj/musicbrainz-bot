@@ -140,11 +140,11 @@ for artist in db.execute(query, query_params):
             continue
 
         # Check if wikipedia lang is compatible with artist country
-        if wp_lang != 'en':
+        if wp_lang != 'en' or wp_lang in acceptable_countries_for_lang:
             if wp_lang not in acceptable_countries_for_lang:
                 continue
             country, country_reasons = determine_country(wikipage)
-            if (country not in acceptable_countries_for_lang[wp_lang] and artist['country'] not in acceptable_countries_for_lang[wp_lang]):
+            if (country not in acceptable_countries_for_lang[wp_lang] or artist['country'] not in acceptable_countries_for_lang[wp_lang]):
                 colored_out(bcolors.HEADER, ' * artist country (%s) not compatible with wiki language (%s)' % (country, wp_lang))
                 continue
 
