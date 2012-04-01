@@ -91,6 +91,56 @@ JOIN artist_credit_name acn ON r.artist_credit = acn.artist_credit
 WHERE acn.artist = %s
 """
 
+query_artist_works = """
+SELECT DISTINCT w.name
+FROM s_work w
+WHERE w.id IN (
+    -- Select works that are related to recordings for this artist
+    SELECT entity1 AS work
+      FROM l_recording_work
+      JOIN recording ON recording.id = entity0
+      JOIN artist_credit_name acn
+              ON acn.artist_credit = recording.artist_credit
+     WHERE acn.artist = %s
+    UNION
+    -- Select works that this artist is related to
+    SELECT entity1 AS work
+      FROM l_artist_work ar
+      JOIN link ON ar.link = link.id
+      JOIN link_type lt ON lt.id = link.link_type
+     WHERE entity0 = %s
+)
+"""
+
+query_related_artists = """
+SELECT DISTINCT a.name
+FROM s_artist a
+WHERE a.id IN (
+    -- Select artists that this artist is directly related to
+    SELECT CASE WHEN entity1 = %s THEN entity0 ELSE entity1 END AS artist
+      FROM l_artist_artist ar
+      JOIN link ON ar.link = link.id
+      JOIN link_type lt ON lt.id = link.link_type
+     WHERE entity0 = %s OR entity1 = %s
+    UNION
+    -- Select artists that are involved with works for this artist (i.e. writers of works this artist performs)
+    SELECT law.entity0 AS artist
+      FROM artist_credit_name acn
+      JOIN recording ON acn.artist_credit = recording.artist_credit
+      JOIN l_recording_work lrw ON recording.id = lrw.entity0
+      JOIN l_artist_work law ON lrw.entity1 = law.entity1
+     WHERE acn.artist = %s
+    UNION
+    -- Select artists of recordings of works for this artist (i.e. performers of works this artist wrote)
+    SELECT acn.artist AS artist
+      FROM artist_credit_name acn
+      JOIN recording ON acn.artist_credit = recording.artist_credit
+      JOIN l_recording_work lrw ON recording.id = lrw.entity0
+      JOIN l_artist_work law ON lrw.entity1 = law.entity1
+     WHERE law.entity0 = %s
+)
+"""
+
 for artist in db.execute(query, query_params):
     colored_out(bcolors.OKBLUE, 'Looking up artist "%s" http://musicbrainz.org/artist/%s' % (artist['name'], artist['gid']))
     matches = wps.query(escape_query(artist['name']), defType='dismax', qf='name', rows=50).results
@@ -120,8 +170,12 @@ for artist in db.execute(query, query_params):
             out(' * album page, skipping')
             continue
         page_title = title
+
+        reasons = []
+
+        # Examine albums
         found_albums = []
-        albums = set([r[0] for r in db.execute(query_artist_albums, (artist['id'], artist['id']))])
+        albums = set([r[0] for r in db.execute(query_artist_albums, (artist['id'],) * 2)])
         albums_to_ignore = set()
         for album in albums:
             if mangle_name(artist['name']) in mangle_name(album):
@@ -133,10 +187,41 @@ for artist in db.execute(query, query_params):
             mangled_album = mangle_name(album)
             if len(mangled_album) > 6 and mangled_album in page:
                 found_albums.append(album)
-        ratio = len(found_albums) * 1.0 / len(albums)
-        min_ratio = 0.15 if len(artist['name']) > 15 else 0.3
-        colored_out(bcolors.WARNING if (ratio < min_ratio and len(found_albums) > 0 and len(found_albums) < 3) else bcolors.NONE, ' * ratio: %s, has albums: %s, found albums: %s' % (ratio, len(albums), len(found_albums)))
-        if ratio < min_ratio and len(found_albums) < 3:
+        if (found_albums):
+            reasons.append(join_names('album', found_albums))
+            out(' * has albums: %s, found albums: %s' % (len(albums), len(found_albums)))
+
+        # Examine works
+        found_works = []
+        page = mangle_name(page_orig)
+        works = set([r[0] for r in db.execute(query_artist_works, (artist['id'],) * 2)])
+        for work in works:
+            mangled_work = mangle_name(work)
+            if mangled_work in page:
+                found_works.append(work)
+        if (found_works):
+            reasons.append(join_names('work', found_works))
+            out(' * has works: %s, found works: %s' % (len(works), len(found_works)))
+
+        # Examine related artists
+        found_artists = []
+        page = mangle_name(page_orig)
+        artists = set([r[0] for r in db.execute(query_related_artists, (artist['id'],) * 5)])
+        artists_to_ignore = set()
+        for rel_artist in artists:
+            if mangle_name(artist['name']) in mangle_name(rel_artist):
+                artists_to_ignore.add(rel_artist)
+        artists -= artists_to_ignore
+        for rel_artist in artists:
+            mangled_rel_artist = mangle_name(rel_artist)
+            if mangled_rel_artist in page:
+                found_artists.append(rel_artist)
+        if (found_artists):
+            reasons.append(join_names('related artist', found_artists))
+            out(' * has related artists: %s, found related artists: %s' % (len(artists), len(found_artists)))
+
+        # Determine if artist matches
+        if not found_albums and not found_works and  not found_artists:
             continue
 
         # Check if wikipedia lang is compatible with artist country
@@ -149,11 +234,11 @@ for artist in db.execute(query, query_params):
                 continue
 
         url = 'http://%s.wikipedia.org/wiki/%s' % (wp_lang, quote_page_title(page_title),)
-        text = 'Matched based on the name. The page mentions %s.' % (join_names('album', found_albums),)
+        text = 'Matched based on the name. The page mentions %s.' % (', '.join(reasons),)
         colored_out(bcolors.OKGREEN, ' * linking to %s' % (url,))
         out(' * edit note: %s' % (text,))
         time.sleep(60)
         mb.add_url("artist", artist['gid'], 179, url, text)
         break
-    db.execute("INSERT INTO bot_wp_artist_link (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
 
+    db.execute("INSERT INTO bot_wp_artist_link (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
