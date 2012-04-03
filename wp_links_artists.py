@@ -28,16 +28,18 @@ wps = solr.SolrConnection('http://localhost:8983/solr/wikipedia'+suffix)
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 """
-
 CREATE TABLE bot_wp_artist_link (
     gid uuid NOT NULL,
     lang character varying(2),
     processed timestamp with time zone DEFAULT now()
+    CONSTRAINT bot_wp_artist_link_pkey PRIMARY KEY (gid, lang)
 );
 
-ALTER TABLE ONLY bot_wp_artist_link
-    ADD CONSTRAINT bot_wp_artist_link_pkey PRIMARY KEY (gid, lang);
-
+CREATE TABLE bot_wp_artist_link_ignore (
+    gid uuid NOT NULL,
+    lang character varying(2),
+    CONSTRAINT bot_wp_artist_link_ignore_pkey PRIMARY KEY (gid, lang)
+);
 """
 
 acceptable_countries_for_lang = {
@@ -54,7 +56,7 @@ else:
     placeHolders = ','.join( ['%s'] * len(acceptable_countries_for_lang[wp_lang]) )
     in_country_clause = "%s IN (%s)" % ('c.iso_code', placeHolders)
     query_params.extend(acceptable_countries_for_lang[wp_lang])
-query_params.append(wp_lang)
+query_params.extend((wp_lang, wp_lang))
 
 query = """
 WITH
@@ -70,12 +72,13 @@ WITH
         WHERE a.id > 2 AND wpl.id IS NULL
             AND (c.iso_code IS NULL OR """ + in_country_clause + """)
     )
-SELECT a.id, a.gid, a.name, ta.iso_code AS country
+SELECT a.id, a.gid, a.name, ta.iso_code AS country, b.processed
 FROM artists_wo_wikipedia ta
 JOIN s_artist a ON ta.id=a.id
 LEFT JOIN bot_wp_artist_link b ON a.gid = b.gid AND b.lang = %s
-WHERE b.gid IS NULL
-ORDER BY country NULLS LAST, a.id
+LEFT JOIN bot_wp_artist_link_ignore i ON a.gid = i.gid AND i.lang = %s
+WHERE i.gid IS NULL
+ORDER BY b.processed NULLS FIRST, country NULLS LAST, a.id
 LIMIT 10000
 """
 
@@ -241,4 +244,7 @@ for artist in db.execute(query, query_params):
         mb.add_url("artist", artist['gid'], 179, url, text)
         break
 
-    db.execute("INSERT INTO bot_wp_artist_link (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
+    if artist['processed'] is None:
+        db.execute("INSERT INTO bot_wp_artist_link (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
+    else:
+        db.execute("UPDATE bot_wp_artist_link SET processed = now() WHERE (gid, lang) = (%s, %s)", (artist['gid'], wp_lang))
