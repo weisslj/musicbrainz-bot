@@ -166,7 +166,8 @@ def wp_is_canonical_page(title, page_orig):
     if 'disambiguation' in title or \
         '{{disambig' in page_orig.lower() or '{{disamb' in page_orig.lower() or \
         'disambiguationpages' in page or \
-        'homonymie' in page:
+        '{{hndis' in page_orig.lower() or \
+        '{{homonymie}}' in page:
         return False, "disambiguation page"
     return True, ""
 
