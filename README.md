@@ -13,6 +13,12 @@ it will fetch the article text from Wikipedia's API and verify that the text con
 
 In a very similar way to how linking to artist works, it will verify that the article text matches at least some track titles.
 
+## Artist information
+
+It goes over all artists that are missing some personnal information (gender, country, begin or end date, ...) but have a Wikipedia page linked.
+The article text is fetched from Wikipedia's API and parsed to find missing information.
+The script can work with Wikipedia in different languages, if referential for a given language is defined. Currently on English and French are defined.
+
 ## Medium format
 
 It goes over all releases that use just Vinyl rather than a more specific format like 7", 10" or 12", and that have only one attached Discogs link.
