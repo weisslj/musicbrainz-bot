@@ -115,6 +115,14 @@ WHERE w.id IN (
 )
 """
 
+query_artist_urls = """
+SELECT DISTINCT u.url
+FROM url u
+JOIN l_artist_url l ON l.entity1 = u.id
+WHERE l.entity0 = %s AND
+    u.url !~ 'wikipedia.org'
+"""
+
 query_related_artists = """
 SELECT DISTINCT a.name
 FROM s_artist a
@@ -206,6 +214,18 @@ for artist in db.execute(query, query_params):
             reasons.append(join_names('work', found_works))
             out(' * has works: %s, found works: %s' % (len(works), len(found_works)))
 
+        # Examine urls
+        found_urls = []
+        page = mangle_name(page_orig)
+        urls = set([r[0] for r in db.execute(query_artist_urls, (artist['id'],))])
+        for url in urls:
+            mangled_url = mangle_name(url)
+            if mangled_url in page:
+                found_urls.append(url)
+        if (found_urls):
+            reasons.append(join_names('url', found_urls))
+            out(' * has urls: %s, found urls: %s' % (len(urls), len(found_urls)))
+
         # Examine related artists
         found_artists = []
         page = mangle_name(page_orig)
@@ -224,7 +244,7 @@ for artist in db.execute(query, query_params):
             out(' * has related artists: %s, found related artists: %s' % (len(artists), len(found_artists)))
 
         # Determine if artist matches
-        if not found_albums and not found_works and  not found_artists:
+        if not found_albums and not found_works and not found_artists and not found_urls:
             continue
 
         # Check if wikipedia lang is compatible with artist country
@@ -232,7 +252,7 @@ for artist in db.execute(query, query_params):
             if wp_lang not in acceptable_countries_for_lang:
                 continue
             country, country_reasons = determine_country(wikipage)
-            if (country not in acceptable_countries_for_lang[wp_lang] or artist['country'] not in acceptable_countries_for_lang[wp_lang]):
+            if (country not in acceptable_countries_for_lang[wp_lang]):
                 colored_out(bcolors.HEADER, ' * artist country (%s) not compatible with wiki language (%s)' % (country, wp_lang))
                 continue
 
