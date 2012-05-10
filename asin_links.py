@@ -44,7 +44,8 @@ engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz')
 
-mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
+mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
 
 store_map = [
     # http://www.amazon.com/gp/help/customer/display.html/ref=hp_left_cn?nodeId=527692
@@ -239,9 +240,12 @@ def cat_compare(a, b, country):
     return a and b and a == b
 
 def main():
+    edits_left = mb.edits_left()
     releases = [(r, gid, barcode, name, ac, country, year, month, day) for r, gid, barcode, name, ac, country, year, month, day in db.execute(query_releases_without_asin)]
     count = len(releases)
     for i, (r, gid, barcode, name, ac, country, year, month, day) in enumerate(releases):
+        if edits_left <= 0:
+            break
         if gid in asin_missing or gid in asin_problematic or gid in asin_nocover or gid in asin_catmismatch:
             continue
         if not barcode_type(barcode):
@@ -338,6 +342,7 @@ def main():
         try:
             mb.add_url('release', gid, 77, url, text)
             db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
+            edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
 
