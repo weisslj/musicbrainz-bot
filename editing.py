@@ -356,3 +356,36 @@ class MusicBrainzClient(object):
         if edit_note:
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
+
+    def add_cover_art(self, release_gid, filename, types, position=None, comment=u'', edit_note=u'', auto=False):
+        self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
+        page = self.b.response().read()
+
+        # upload cover art
+        self.b.follow_link(tag="iframe")
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
+        self.b.add_file(open(filename))
+        self.b.submit()
+        page = self.b.response().read()
+        if "parent.document.getElementById" not in page:
+            raise Exception('Error uploading cover art file')
+
+        # submit the edit
+        self.b.back(2)
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
+        self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
+        submitted_types = []
+        types_control = self.b.find_control(name='add-cover-art.type_id')
+        for type in types:
+            for item in types_control.get_items():
+                if len(item.get_labels()) > 0 and item.get_labels()[0].text.lower() == type.lower():
+                    submitted_types.append(item.name)
+                    break
+        self.b['add-cover-art.type_id'] = submitted_types
+        if position:
+            self.b['add-cover-art.position'] = position
+        if comment:
+            self.b['add-cover-art.comment'] = comment.encode('utf8')
+        if edit_note:
+            self.b['add-cover-art.edit_note'] = edit_note.encode('utf8')
+        self.b.submit()
