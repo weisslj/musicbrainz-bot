@@ -332,6 +332,9 @@ def main():
             text += u'\nhttp://amazon.jp/s?field-keywords=%s\nhttp://amazon.jp/s?field-keywords=%s' % (catnr, barcode)
         else:
             text += u'\nhttp://amazon.%s/s?field-keywords=%s' % (amazon_url_tld(url), barcode)
+        # make "Import" bold so it is easier recognizable
+        re_bold_import = re.compile(ur'\b(import)\b', re.IGNORECASE)
+        text = re_bold_import.sub(ur"'''\1'''", text)
         try:
             mb.add_url('release', gid, 77, url, text)
             db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
