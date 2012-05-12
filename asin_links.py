@@ -107,6 +107,7 @@ GROUP BY r.id, r.gid, r.barcode, release_name.name, c.iso_code, r.artist_credit
 ORDER BY r.artist_credit
 '''
 
+# from https://github.com/metabrainz/musicbrainz-server/blob/master/root/static/scripts/edit/MB/Control/URLCleanup.js
 def amazon_url_asin(url):
     m = re.search(r'(?:/|\ba=)([A-Z0-9]{10})(?:[/?&%#]|$)', url)
     return m.group(1) if m else None
@@ -168,10 +169,9 @@ def amazon_url_tld(url):
         return tld
     return None
 
-def amazon_url_cleanup(url):
+def amazon_url_cleanup(url, asin):
     tld = amazon_url_tld(url)
-    asin = amazon_url_asin(url)
-    if tld and asin:
+    if tld:
         return 'http://www.amazon.%s/gp/product/%s' % (tld, asin)
     return None
 
@@ -268,7 +268,7 @@ def main():
             out('  not found, continue')
             db.execute("INSERT INTO bot_asin_missing (gid) VALUES (%s)", gid)
             continue
-        url = amazon_url_cleanup(str(item.DetailPageURL))
+        url = amazon_url_cleanup(str(item.DetailPageURL), str(item.ASIN))
         out(url)
         if item.ASIN in asins:
             out('  skip, ASIN already in DB')
