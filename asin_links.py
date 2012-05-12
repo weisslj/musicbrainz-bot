@@ -103,7 +103,7 @@ WHERE r.edits_pending = 0 AND rs.name != 'Pseudo-Release' AND (r.comment IS NULL
     GROUP BY r.barcode
     HAVING COUNT(r.barcode) = 1
 )
-GROUP BY r.id, r.gid, r.barcode, release_name.name, c.iso_code, r.artist_credit
+GROUP BY r.id, r.gid, r.barcode, release_name.name, c.iso_code, r.artist_credit, date_year, date_month, date_day
 ORDER BY r.artist_credit
 '''
 
