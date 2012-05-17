@@ -39,7 +39,7 @@ CREATE TABLE bot_wp_rg_link (
 acceptable_countries_for_lang = {
     'fr': ['FR', 'MC']
 }
-#acceptable_countries_for_lang['en'] = acceptable_countries_for_lang['fr']
+acceptable_countries_for_lang['en'] = acceptable_countries_for_lang['fr']
 
 query_params = []
 no_country_filter = (wp_lang == 'en') and ('en' not in acceptable_countries_for_lang or len(acceptable_countries_for_lang['en']) == 0)
@@ -69,18 +69,20 @@ WITH
             GROUP BY acn.artist_credit HAVING count(c.iso_code) = 1
         ) tc ON rg.artist_credit = tc.artist_credit
         WHERE rg.artist_credit > 2 AND wpl.id IS NULL
-            AND (rg.type IS NULL OR rg.type IN (SELECT id FROM release_group_type WHERE name IN ('Album', 'EP', 'Live', 'Remix', 'Compilation', 'Soundtrack')))
+            AND (rg.type IS NULL OR rg.type IN (SELECT id FROM release_group_primary_type WHERE name IN ('Album')))
             AND (tc.artist_credit IS NOT NULL """ + (' OR TRUE' if no_country_filter else '') + """)
         ORDER BY rg.artist_credit, rg.id
         LIMIT 100000
     )
-SELECT rg.id, rg.gid, rg.name, ac.name, rgt.name
+SELECT rg.id, rg.gid, rg.name, ac.name, string_agg(rgtn.name, ',') AS rg_secondary_types
 FROM rgs_wo_wikipedia ta
 JOIN s_release_group rg ON ta.id=rg.id
 JOIN s_artist_credit ac ON rg.artist_credit=ac.id
 LEFT JOIN bot_wp_rg_link b ON rg.gid = b.gid AND b.lang = %s
-LEFT JOIN release_group_type rgt ON rgt.id = rg.type
+LEFT JOIN release_group_secondary_type_join rgst ON rg.id = rgst.release_group
+LEFT JOIN release_group_secondary_type rgtn ON rgst.secondary_type = rgtn.id
 WHERE b.gid IS NULL
+GROUP BY rg.artist_credit, rg.id, rg.gid, rg.name, ac.name
 ORDER BY rg.artist_credit, rg.id
 LIMIT 1000
 """
@@ -98,7 +100,7 @@ category_re = {}
 category_re['en'] = re.compile(r'\[\[Category:(.+?)(?:\|.*?)?\]\]')
 category_re['fr'] = re.compile(r'\[\[Cat\xe9gorie:(.+?)\]\]')
 
-for rg_id, rg_gid, rg_name, ac_name, rg_type in db.execute(query, query_params):
+for rg_id, rg_gid, rg_name, ac_name, rg_sec_types in db.execute(query, query_params):
     colored_out(bcolors.OKBLUE, 'Looking up release group "%s" http://musicbrainz.org/release-group/%s' % (rg_name, rg_gid))
     matches = wps.query(escape_query(rg_name), defType='dismax', qf='name', rows=100).results
     last_wp_request = time.time()
@@ -166,7 +168,7 @@ for rg_id, rg_gid, rg_name, ac_name, rg_type in db.execute(query, query_params):
         if ratio < min_ratio:
             colored_out(bcolors.WARNING, '  => ratio too low (min = %s)' % min_ratio)
             continue
-        auto = ratio > 0.75 and rg_type not in ('Compilation', 'Soundtrack')
+        auto = ratio > 0.75 and (rg_sec_types is None or ('Compilation' not in rg_sec_types and 'Soundtrack' not in rg_sec_types))
         text = 'Matched based on the name. The page mentions artist "%s" and %s.' % (ac_name, join_names('track', found_tracks),)
         colored_out(bcolors.OKGREEN, ' * linking to %s' % (url,))
         out(' * edit note: %s' % (text,))
