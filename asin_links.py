@@ -337,7 +337,7 @@ def main():
         else:
             text += u'\nhttp://amazon.%s/s?field-keywords=%s' % (amazon_url_tld(url), barcode)
         # make "Import" bold so it is easier recognizable
-        re_bold_import = re.compile(ur'\b(import)\b', re.IGNORECASE)
+        re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
         text = re_bold_import.sub(ur"'''\1'''", text)
         try:
             mb.add_url('release', gid, 77, url, text)
