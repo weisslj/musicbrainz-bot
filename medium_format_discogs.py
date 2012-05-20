@@ -33,7 +33,7 @@ WITH
             JOIN medium m ON m.release = r.id
             JOIN l_release_url l ON l.entity0 = r.id AND l.link IN (SELECT id FROM link WHERE link_type = 76)
             JOIN url u ON u.id = l.entity1
-        WHERE (m.format IN (7) /* OR m.format IS NULL*/)
+        WHERE (m.format IN (7) OR m.format IS NULL)
             /* releases with only one medium */
             AND NOT EXISTS (SELECT 1 FROM medium m2 WHERE m2.release = r.id AND m2.id <> m.id)
             /* discogs link should only be linked to this release */
@@ -42,13 +42,12 @@ WITH
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id)
             AND l.edits_pending = 0
     )
-SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position
+SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position, b.processed
 FROM vinyl_releases ta
 JOIN s_release r ON ta.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_medium_format_discogs b ON r.gid = b.gid
-WHERE b.gid IS NULL
-ORDER BY r.artist_credit, r.id
+ORDER BY b.processed NULLS FIRST, r.artist_credit, r.id
 LIMIT 1000
 """
 
@@ -66,17 +65,30 @@ def discogs_get_format(release_url):
                 return '7"'
             if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
                 return '10"'
+            if (format['name'] == 'CD'):
+                return 'CD'
+            if (format['name'] == 'CDr'):
+                return 'CDr'
+            if (format['name'] == 'Cassette'):
+                return 'Cassette'
+            if (format['name'] == 'File'):
+                return 'DigitalMedia'
+
     return None
 
 DISCOGS_MB_FORMATS_MAPPING = {
     '12"': 31,
     '10"': 30,
-    '7"' : 29
+    '7"' : 29,
+    'CD' : 1,
+    'CDr' : 33,
+    'Cassette' : 8,
+    'DigitalMedia': 12
 }
 
 discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
 
-for id, gid, name, url, format, ac_name, position in db.execute(query):
+for id, gid, name, url, format, ac_name, position, processed in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Looking up release "%s" by "%s" http://musicbrainz.org/release/%s' % (name, ac_name, gid))
 
     discogs_format = discogs_get_format(url)
@@ -89,4 +101,7 @@ for id, gid, name, url, format, ac_name, position in db.execute(query):
     else:
         colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (url,))
 
-    db.execute("INSERT INTO bot_medium_format_discogs (gid) VALUES (%s)", (gid,))
+    if processed is None:
+        db.execute("INSERT INTO bot_medium_format_discogs (gid) VALUES (%s)", (gid,))
+    else:
+        db.execute("UPDATE bot_medium_format_discogs SET processed = now() WHERE gid = %s", (gid,))
