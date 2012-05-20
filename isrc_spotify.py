@@ -1,30 +1,80 @@
-# (c) 2012 Ian Weller
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# (c) 2012 Ian Weller, Aurélien Mino
 # This program is free software. It comes without any warranty, to the extent
 # permitted by applicable law. You can redistribute it and/or modify it under
 # the terms of the Do What The Fuck You Want To Public License, Version 2, as
 # published by Sam Hocevar. See COPYING for more details.
 
-import codecs
-from datetime import datetime
-from getpass import getpass
-import json
-from kitchen.text.converters import to_bytes, to_unicode
-import logging
-import musicbrainzngs
-import os
-import os.path
-from picard.similarity import similarity2
-from pprint import pprint
-import time
+import re
 import urllib
 import urllib2
+import mechanize
+import sqlalchemy
+import musicbrainzngs
+import json
+import time
+from kitchen.text.converters import to_bytes, to_unicode
+from datetime import datetime
+from picard.similarity import similarity2
+from editing import MusicBrainzClient
+from utils import out, colored_out, bcolors
+import config as cfg
+
+import codecs
+
+'''
+CREATE TABLE bot_isrc_spotify (
+    release uuid NOT NULL,
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_isrc_spotify_pkey PRIMARY KEY (release)
+)
+'''
 
 musicbrainzngs.set_useragent(
-    "yankisrc.py",
-    "0.1",
-    "ianweller@gmail.com",
+    "musicbrainz-bot",
+    "1.0",
+    "%s/user/%s" % (cfg.MB_SITE, cfg.MB_USERNAME)
 )
 
+query_releases_wo_isrcs = '''
+WITH
+    releases_wo_isrcs AS (
+        SELECT DISTINCT r.id, r.gid, r.name, r.barcode, r_country.iso_code AS country, r.artist_credit
+        FROM s_release r
+            JOIN medium ON medium.release = r.id
+            LEFT JOIN country r_country ON r.country = r_country.id
+            JOIN artist_credit ac ON r.artist_credit = ac.id
+            JOIN artist_credit_name acn ON acn.artist_credit = ac.id
+            JOIN artist a ON a.id = acn.artist
+            LEFT JOIN country a_country ON a.country = a_country.id
+        WHERE r.barcode IS NOT NULL AND r.barcode != ''
+            /* Release has no ISRCs */
+            AND NOT EXISTS (SELECT 1 FROM track JOIN isrc ON isrc.recording = track.recording WHERE medium.tracklist = track.tracklist)
+            /* AND a_country.iso_code = 'FR' AND r_country.iso_code = 'FR' */
+    )
+SELECT r.id, r.gid, r.name, r.barcode, ac.name AS artist, b.processed
+FROM releases_wo_isrcs tr
+JOIN s_release r ON tr.id = r.id
+JOIN s_artist_credit ac ON r.artist_credit = ac.id
+LEFT JOIN bot_isrc_spotify b ON b.release = r.gid
+ORDER BY b.processed NULLS FIRST, r.artist_credit
+LIMIT 100
+'''
+
+query_tracks = '''
+SELECT r.gid, r.name, r.length, m.position || '.' || t.position AS position
+FROM medium m
+    JOIN track t ON m.tracklist = t.tracklist
+    JOIN s_recording r ON r.id = t.recording
+WHERE m.release = %s
+ORDER BY m.position, t.position
+'''
+
+engine = sqlalchemy.create_engine(cfg.MB_DB)
+db = engine.connect()
+db.execute('SET search_path TO musicbrainz')
 
 class SpotifyWebService(object):
     """
@@ -50,8 +100,8 @@ class SpotifyWebService(object):
 
     def _check_rate_limit(self):
         diff = datetime.now() - self.last_request_time
-        if diff.total_seconds() < 0.15:
-            time.sleep(0.15 - diff.total_seconds())
+        if diff.total_seconds() < 2.0:
+            time.sleep(2.0 - diff.total_seconds())
 
     def lookup(self, uri, detail=0):
         """
@@ -73,148 +123,36 @@ class SpotifyWebService(object):
         return data[uri.split(':')[1]]
 
     def search_albums(self, query):
-        data = self._fetch_json('http://ws.spotify.com/search/1/album',
-                                {'q': query})
+        data = self._fetch_json('http://ws.spotify.com/search/1/album', {'q': query})
         return data['albums']
-
-
-def fetch_mbrainz_album_info_from_id(mbid):
-    data = musicbrainzngs.get_release_by_id(
-        mbid, includes=['artists', 'recordings', 'isrcs'])
-    return data['release']
-
-
-def fetch_spotify_album_info_from_barcode(sws, barcode):
-    albums = sws.search_albums('upc:%s' % barcode)
-    if len(albums) != 1:
-        return None
-    uri = albums[0]['href']
-    return sws.lookup(uri, detail=2)
-
-
-def normalize_mbrainz_data(mbrainz):
-    data = {}
-    data['title'] = mbrainz['title']
-    data['artist'] = mbrainz['artist-credit-phrase']
-    data['tracks'] = []
-    for medium in mbrainz['medium-list']:
-        for track in medium['track-list']:
-            trackdata = {
-                'title': track['recording']['title'],
-                'length': float(track['recording']['length']) / 1000,
-            }
-            data['tracks'].append(trackdata)
-    return data
-
-
-def normalize_spotify_data(spotify):
-    data = {}
-    data['title'] = spotify['name']
-    data['artist'] = spotify['artist']
-    data['tracks'] = []
-    for track in spotify['tracks']:
-        data['tracks'].append({
-            'title': track['name'],
-            'length': track['length'],
-        })
-    return data
-
 
 def similarity(a, b):
     return int(similarity2(to_unicode(a), to_unicode(b)) * 100)
 
-
-def compare_data(mbrainz_in, spotify_in):
-    mbrainz = normalize_mbrainz_data(mbrainz_in)
-    spotify = normalize_spotify_data(spotify_in)
-    title = similarity(mbrainz['title'], spotify['title'])
-    artist = similarity(mbrainz['artist'], spotify['artist'])
-    if abs(len(mbrainz['tracks']) - len(spotify['tracks'])) != 0:
+def compare_data(mb_release, sp_release):
+    name = similarity(mb_release['name'], sp_release['name'])
+    artist = similarity(mb_release['artist'], sp_release['artist'])
+    if abs(len(mb_release['tracks']) - len(sp_release['tracks'])) != 0:
         return 0
     track = []
     track_time_diff = []
     track_sim = []
-    for i in range(len(mbrainz['tracks'])):
-        track.append(similarity(mbrainz['tracks'][i]['title'], spotify['tracks'][i]['title']))
-        track_time_diff.append(abs(mbrainz['tracks'][i]['length'] - spotify['tracks'][i]['length']))
+    for i in range(len(mb_release['tracks'])):
+        track.append(similarity(mb_release['tracks'][i]['name'], sp_release['tracks'][i]['name']))
+        track_time_diff.append(abs(mb_release['tracks'][i]['length'] - sp_release['tracks'][i]['length']*1000)/1000)
         if track_time_diff[i] > 15:
             track_time_sim = 0
         else:
             track_time_sim = int((15 - track_time_diff[i]) / 15 * 100)
         track_sim.append(int(track[i] * 0.50) + int(track_time_sim * 0.50))
-    return int(title * 0.15) + int(artist * 0.15) + int(sum(track_sim) * 0.70 / len(mbrainz['tracks']))
+    return int(name * 0.10) + int(artist * 0.10) + int(sum(track_sim) / len(mb_release['tracks']) * 0.80)
 
-
-def mblogin():
-    print "Username:",
-    user = raw_input()
-    passwd = getpass()
-    musicbrainzngs.auth(user, passwd)
-
-
-def seconds_to_minsec(seconds):
-    minutes = seconds / 60
-    newsec = seconds % 60
-    return '%d:%06.3f' % (minutes, newsec)
-
-
-def make_html_comparison_page(mbrainz, spotify):
-    with codecs.open('compare.html', mode='w', encoding='utf-8') as f:
-        f.write('<html><head><meta charset="utf-8"></head><body><div style="float:left;width:50%">')
-        f.write('<div style="font-weight:bold">%s</div>' % mbrainz['title'])
-        f.write('<div style="font-weight:bold">%s</div>' % mbrainz['artist-credit-phrase'])
-        for medium in mbrainz['medium-list']:
-            mediumno = medium['position']
-            for track in medium['track-list']:
-                f.write('<div>%s-%s: %s (%s)</div>' %
-                        (mediumno, track['position'],
-                         track['recording']['title'],
-                         seconds_to_minsec(int(track['recording']['length']) * .001)))
-        f.write('</div><div style="float:right;width:50%">')
-        f.write('<div style="font-weight:bold">%s</div>' % spotify['name'])
-        f.write('<div style="font-weight:bold">%s</div>' % spotify['artist'])
-        for track in spotify['tracks']:
-            f.write('<div>%s-%s: %s (%s)</div>' %
-                    (track['disc-number'], track['track-number'],
-                     track['name'], seconds_to_minsec(track['length'])))
-        f.write('</div></body></html>')
-
-
-def isrcify_mbid(mbid, sws):
-    info_mb = fetch_mbrainz_album_info_from_id(mbid)
-    info_sp = fetch_spotify_album_info_from_barcode(sws, info_mb['barcode'])
-    if not info_sp:
-        return
-    for track in info_sp['tracks']:
-        for extid in track['external-ids']:
-            if extid['type'] == 'isrc':
-                if extid['id'].upper()[:2] == 'TC':
-                    print 'TuneCore song IDs detected! Bailing out'
-                    return
-    sim = compare_data(info_mb, info_sp)
-    print '%s by %s' % (info_mb['title'], info_mb['artist-credit-phrase'])
-    print 'Similarity: %d%%' % sim
-    print 'http://musicbrainz.org/release/%s' % mbid
-    print 'http://open.spotify.com/album/%s' % info_sp['href'].split(':')[-1]
-    print 'http://ws.spotify.com/lookup/1/?uri=%s&extras=trackdetail' % info_sp['href']
-    make_html_comparison_page(info_mb, info_sp)
-    print 'Add ISRCs? [y/n]',
-    response = raw_input()
-    if response.lower() == 'y':
-        submit_isrcs(info_mb, info_sp)
-        print "Added by yankisrc.py"
-        print
-        print "Data from http://ws.spotify.com/lookup/1/?uri=%s&extras=trackdetail" % info_sp['href']
-        print "Barcodes match, metadata matched %d%%" % sim
-
-
-def submit_isrcs(info_mb, info_sp):
+def submit_isrcs(mb_release, sp_release):
     mbids = []
-    for medium in info_mb['medium-list']:
-        for track in medium['track-list']:
-            mbids.append(track['recording']['id'])
+    for track in mb_release['tracks']:
+            mbids.append(track['gid'])
     isrcs = []
-    for track in info_sp['tracks']:
+    for track in sp_release['tracks']:
         this_isrc = []
         for extid in track['external-ids']:
             if extid['type'] == 'isrc':
@@ -222,65 +160,71 @@ def submit_isrcs(info_mb, info_sp):
         isrcs.append(this_isrc)
     musicbrainzngs.submit_isrcs(dict(zip(mbids, isrcs)))
 
+def make_html_comparison_page(mbrainz, spotify):
+    with codecs.open('compare.html', mode='w', encoding='utf-8') as f:
+        f.write('<html><head><meta charset="utf-8"></head><body><div style="float:left;width:50%">')
+        f.write('<div style="font-weight:bold">%s</div>' % mbrainz['name'])
+        f.write('<div style="font-weight:bold">%s</div>' % mbrainz['artist'])
+        for track in mbrainz['tracks']:
+            f.write('<div>%s: %s (%s)</div>' %
+                    (track['position'],
+                     track['name'],
+                     int(track['length'] if track['length'] is not None else 0) ))
+        f.write('</div><div style="float:right;width:50%">')
+        f.write('<div style="font-weight:bold">%s</div>' % spotify['name'])
+        f.write('<div style="font-weight:bold">%s</div>' % spotify['artist'])
+        for track in spotify['tracks']:
+            f.write('<div>%s-%s: %s (%s)</div>' %
+                    (track['disc-number'], track['track-number'],
+                     track['name'], int(track['length']*1000)))
+        f.write('</div></body></html>')
 
-def do_mb_search(entity, query='', fields={}, limit=None, offset=None):
-	"""Perform a full-text search on the MusicBrainz search server.
-	`query` is a free-form query string and `fields` is a dictionary
-	of key/value query parameters. They keys in `fields` must be valid
-	for the given entity type.
-	"""
-	# Encode the query terms as a Lucene query string.
-	query_parts = [query.replace('\x00', '').strip()]
-	for key, value in fields.iteritems():
-		# Ensure this is a valid search field.
-		if key not in musicbrainzngs.VALID_SEARCH_FIELDS[entity]:
-			raise InvalidSearchFieldError(
-				'%s is not a valid search field for %s' % (key, entity)
-			)
+def save_processing(mb_release):
+    if mb_release['processed'] is None:
+        db.execute("INSERT INTO bot_isrc_spotify (release) VALUES (%s)", (mb_release['gid']))
+    else:
+        db.execute("UPDATE bot_isrc_spotify SET processed = now() WHERE release = %s", (mb_release['gid']))
 
-		# Escape Lucene's special characters.
-        #value = re.sub(r'([+\-&|!(){}\[\]\^"~*?:\\])', r'\\\1', value)
-		value = value.replace('\x00', '').strip()
-		if value:
-			query_parts.append(u'%s:(%s)' % (key, value))
-	full_query = u' '.join(query_parts).strip()
-	if not full_query:
-		raise ValueError('at least one query term is required')
+sws = SpotifyWebService()
+musicbrainzngs.auth(cfg.MB_USERNAME, cfg.MB_PASSWORD)
 
-	# Additional parameters to the search.
-	params = {'query': full_query}
-	if limit:
-		params['limit'] = str(limit)
-	if offset:
-		params['offset'] = str(offset)
+for release in db.execute(query_releases_wo_isrcs):
 
-	return musicbrainzngs.musicbrainz._do_mb_query(entity, '', [], params)
+    mb_release = dict(release)
 
+    colored_out(bcolors.OKBLUE, 'Looking up release "%s" http://musicbrainz.org/release/%s' % (mb_release['name'], mb_release['gid']))
 
-if __name__ == '__main__':
-    donepath = os.path.join(os.getenv('HOME'), '.yankisrc_done')
-    with open(donepath, 'r') as f:
-        done = [x.strip() for x in f.readlines()]
-    donefile = open(donepath, 'a')
-    mblogin()
-    sws = SpotifyWebService()
-    offset = 0
-    while True:
-        fields = {
-            'barcode': "[0 TO 99999999999999999]",
-            'type': "album",
-            'status': "official",
-        }
-        rels = do_mb_search('release', '', fields, 100, offset)
-        if len(rels['release-list']) == 0:
-            break
-        offset += len(rels['release-list'])
-        for rel in rels['release-list']:
-            mbid = rel['id']
-            if mbid in done:
-                continue
-            print 'MBID: %s' % mbid
-            isrcify_mbid(mbid, sws)
-            done.append(mbid)
-            donefile.write(mbid + '\n')
-            donefile.flush()
+    sp_albums = sws.search_albums('upc:%s' % mb_release['barcode'])
+    if len(sp_albums) != 1:
+        if len(sp_albums) == 0:
+            out(' * no spotify release found')
+        if len(sp_albums) > 1:
+            out(' * multiple spotify releases found')
+        save_processing(mb_release)
+        continue
+    sp_uri = sp_albums[0]['href']
+    sp_release = sws.lookup(sp_uri, detail=2)
+
+    for track in sp_release['tracks']:
+        for extid in track['external-ids']:
+            if extid['type'] == 'isrc':
+                if extid['id'].upper()[:2] == 'TC':
+                    print 'TuneCore song IDs detected! Bailing out'
+                    save_processing(mb_release)
+                    continue
+
+    mb_release['tracks'] = []
+    for mb_track in db.execute(query_tracks % (mb_release['id'],)):
+        mb_release['tracks'].append(mb_track)
+
+    make_html_comparison_page(mb_release, sp_release)
+
+    sim = compare_data(mb_release, sp_release)
+    out(' * comparing with %s: metadata matched %d%%' % (sp_uri, sim))
+    if sim < 85:
+        out(' * not enough similarity => skipping')
+    else:
+        out(' * submitting ISRCs')
+        submit_isrcs(mb_release, sp_release)
+
+    save_processing(mb_release)
