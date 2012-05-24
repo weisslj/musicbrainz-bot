@@ -1,7 +1,12 @@
 import mechanize
 import urllib
+import urllib2
 import time
 import re
+import os
+import random
+import string
+import config as cfg
 from mbbot.guesscase import guess_artist_sort_name
 
 
@@ -357,14 +362,26 @@ class MusicBrainzClient(object):
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
 
-    def add_cover_art(self, release_gid, filename, types, position=None, comment=u'', edit_note=u'', auto=False):
+    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False):
+
+        # download image if it's remotely hosted
+        image_is_remote = True if image.startswith(('http://', 'https://', 'ftp://')) else False
+        if image_is_remote:
+            u = urllib2.urlopen(image)
+            localFile = cfg.TMP_DIR + '/' + ''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(8))
+            tmpfile = open(localFile, 'w')
+            tmpfile.write(u.read())
+            tmpfile.close()
+        else:
+            localFile = image
+
         self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
         page = self.b.response().read()
 
         # upload cover art
         self.b.follow_link(tag="iframe")
         self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
-        self.b.add_file(open(filename))
+        self.b.add_file(open(localFile))
         self.b.submit()
         page = self.b.response().read()
         if "parent.document.getElementById" not in page:
@@ -372,6 +389,8 @@ class MusicBrainzClient(object):
 
         # submit the edit
         self.b.back(2)
+        # Will probably fail. Solution is to install patched mechanize:
+        # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
         self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
         self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
         submitted_types = []
@@ -389,3 +408,6 @@ class MusicBrainzClient(object):
         if edit_note:
             self.b['add-cover-art.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
+
+        if image_is_remote:
+            os.remove(localFile)

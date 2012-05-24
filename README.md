@@ -28,3 +28,8 @@ Information will then be retrieved from Discogs and submitted to MusicBrainz.
 
 Script exist to determine corresponding Discogs entries for MusicBrainz release and release-group.
 
+## Uploading images to the Cover Art Archive (http://coverartarchive.org/)
+
+NB: This requires a patched version of mechanize, see:
+http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
+
