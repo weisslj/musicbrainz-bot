@@ -17,6 +17,8 @@ db.execute("SET search_path TO musicbrainz")
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
+discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
+
 """
 CREATE TABLE bot_medium_format_discogs (
     gid uuid NOT NULL,
@@ -57,14 +59,7 @@ def discogs_get_format(release_url):
         release_id = int(m.group(1))
         release = discogs.Release(release_id)
         for format in release.data['formats']:
-            if ('descriptions' not in format):
-                continue
-            if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
-                return '12"'
-            if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
-                return '7"'
-            if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
-                return '10"'
+
             if (format['name'] == 'CD'):
                 return 'CD'
             if (format['name'] == 'CDr'):
@@ -74,6 +69,14 @@ def discogs_get_format(release_url):
             if (format['name'] == 'File'):
                 return 'DigitalMedia'
 
+            if ('descriptions' not in format):
+                continue
+            if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
+                return '12"'
+            if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
+                return '7"'
+            if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
+                return '10"'
     return None
 
 DISCOGS_MB_FORMATS_MAPPING = {
@@ -85,8 +88,6 @@ DISCOGS_MB_FORMATS_MAPPING = {
     'Cassette' : 8,
     'DigitalMedia': 12
 }
-
-discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
 
 for id, gid, name, url, format, ac_name, position, processed in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Looking up release "%s" by "%s" http://musicbrainz.org/release/%s' % (name, ac_name, gid))

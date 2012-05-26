@@ -304,13 +304,10 @@ class MusicBrainzClient(object):
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_tracklist")
 
-        page = self.b.response().read()
-        if "This medium already has disc ID" in page:
-            print " * has a discid => medium format can't be set to a format that can't have disc IDs"
-            return
-
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
-        attributes = {"mediums.%s.format_id" % (medium_number-1): [[str(old_format_id)], [str(new_format_id)]]}
+        attributes = {
+            "mediums.%s.format_id" % (medium_number-1): [[str(old_format_id) if old_format_id is not None else ''], [str(new_format_id)]]
+        }
         changed = False
         for k, v in attributes.items():
             if self.b[k] != v[0]:
@@ -323,7 +320,12 @@ class MusicBrainzClient(object):
             print " * already set, not changing"
             return
         self.b.submit(name="step_editnote")
+
         page = self.b.response().read()
+        if "This medium already has disc ID" in page:
+            print " * has a discid => medium format can't be set to a format that can't have disc IDs"
+            return
+
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
         try:
             self.b["edit_note"] = edit_note.encode('utf8')
