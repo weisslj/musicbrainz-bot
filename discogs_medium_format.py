@@ -20,10 +20,10 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
 
 """
-CREATE TABLE bot_medium_format_discogs (
+CREATE TABLE bot_discogs_medium_format (
     gid uuid NOT NULL,
     processed timestamp with time zone DEFAULT now(),
-    CONSTRAINT bot_medium_format_discogs_pkey PRIMARY KEY (gid)
+    CONSTRAINT bot_discogs_medium_format_pkey PRIMARY KEY (gid)
 );
 """
 
@@ -48,7 +48,7 @@ SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position, b.processed
 FROM vinyl_releases ta
 JOIN s_release r ON ta.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
-LEFT JOIN bot_medium_format_discogs b ON r.gid = b.gid
+LEFT JOIN bot_discogs_medium_format b ON r.gid = b.gid
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.id
 LIMIT 1000
 """
@@ -103,6 +103,6 @@ for id, gid, name, url, format, ac_name, position, processed in db.execute(query
         colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (url,))
 
     if processed is None:
-        db.execute("INSERT INTO bot_medium_format_discogs (gid) VALUES (%s)", (gid,))
+        db.execute("INSERT INTO bot_discogs_medium_format (gid) VALUES (%s)", (gid,))
     else:
-        db.execute("UPDATE bot_medium_format_discogs SET processed = now() WHERE gid = %s", (gid,))
+        db.execute("UPDATE bot_discogs_medium_format SET processed = now() WHERE gid = %s", (gid,))
