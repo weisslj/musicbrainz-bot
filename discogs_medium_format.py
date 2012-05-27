@@ -29,8 +29,8 @@ CREATE TABLE bot_discogs_medium_format (
 
 query = """
 WITH
-    vinyl_releases AS (
-        SELECT r.id, u.url, m.format, m.position
+    releases_with_fuzzy_format AS (
+        SELECT r.id, u.url AS discogs_url, m.format, m.position
         FROM release r
             JOIN medium m ON m.release = r.id
             JOIN l_release_url l ON l.entity0 = r.id AND l.link IN (SELECT id FROM link WHERE link_type = 76)
@@ -44,9 +44,9 @@ WITH
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id)
             AND l.edits_pending = 0
     )
-SELECT r.id, r.gid, r.name, ta.url, ta.format, ac.name, ta.position, b.processed
-FROM vinyl_releases ta
-JOIN s_release r ON ta.id = r.id
+SELECT r.id, r.gid, r.name, ra.discogs_url, ra.format, ac.name, ra.position, b.processed
+FROM releases_with_fuzzy_format ra
+JOIN s_release r ON ra.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_medium_format b ON r.gid = b.gid
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.id
@@ -89,20 +89,20 @@ DISCOGS_MB_FORMATS_MAPPING = {
     'DigitalMedia': 12
 }
 
-for id, gid, name, url, format, ac_name, position, processed in db.execute(query):
-    colored_out(bcolors.OKBLUE, 'Looking up release "%s" by "%s" http://musicbrainz.org/release/%s' % (name, ac_name, gid))
+for release in db.execute(query):
+    colored_out(bcolors.OKBLUE, 'Looking up release "%s" by "%s" http://musicbrainz.org/release/%s' % (release['name'], release['ac_name'], release['gid']))
 
-    discogs_format = discogs_get_format(url)
+    discogs_format = discogs_get_format(release['discogs_url'])
     if discogs_format:
-        colored_out(bcolors.HEADER, ' * using %s, found format: %s' % (url,discogs_format))
-        edit_note = 'Setting medium format from attached Discogs link (%s)' % url
+        colored_out(bcolors.HEADER, ' * using %s, found format: %s' % (release['discogs_url'], discogs_format))
+        edit_note = 'Setting medium format from attached Discogs link (%s)' % release['discogs_url']
         out(' * edit note: %s' % (edit_note,))
-        mb.set_release_medium_format(gid, position, format, DISCOGS_MB_FORMATS_MAPPING[discogs_format], edit_note, True)
+        mb.set_release_medium_format(release['gid'], release['position'], release['format'], DISCOGS_MB_FORMATS_MAPPING[discogs_format], edit_note, True)
         time.sleep(5)
     else:
-        colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (url,))
+        colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (release['discogs_url'],))
 
-    if processed is None:
-        db.execute("INSERT INTO bot_discogs_medium_format (gid) VALUES (%s)", (gid,))
+    if release['processed'] is None:
+        db.execute("INSERT INTO bot_discogs_medium_format (gid) VALUES (%s)", (release['gid'],))
     else:
-        db.execute("UPDATE bot_discogs_medium_format SET processed = now() WHERE gid = %s", (gid,))
+        db.execute("UPDATE bot_discogs_medium_format SET processed = now() WHERE gid = %s", (release['gid'],))
