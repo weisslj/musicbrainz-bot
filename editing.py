@@ -6,8 +6,12 @@ import re
 import os
 import random
 import string
+import json
 import config as cfg
+import hashlib
+import base64
 import socket
+from utils import structureToString
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
@@ -308,6 +312,64 @@ class MusicBrainzClient(object):
             print " * already set, not changing"
             return
         self.b["barcode_confirm"] = ["1"]
+        self.b.submit(name="step_editnote")
+        page = self.b.response().read()
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        try:
+            self.b["edit_note"] = edit_note.encode('utf8')
+        except mechanize.ControlNotFoundError:
+            raise Exception('unable to post edit')
+        try: self.b["as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
+        self.b.submit(name="save")
+        page = self.b.response().read()
+        if "Release information" not in page:
+            raise Exception('unable to post edit')
+
+    def edit_release_tracklisting(self, entity_id, mediums, edit_note=u'', auto=False):
+        """
+        Edit a release tracklisting. Doesn't handle adding/deleting tracks.
+        Each medium object may contain the following properties: position, format, name, tracklist.
+        Each track object may contain the following properties: position, name, length, number, artist_credit.
+        """
+        self.b.open(self.url("/release/%s/edit" % (entity_id,)))
+
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self.b["barcode_confirm"] = ["1"]
+        self.b.submit(name="step_tracklist")
+
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        for medium_no, medium in enumerate(mediums):
+            if 'position' in medium:
+                self.b["mediums.%s.position" % medium_no] = medium['position']
+            if 'name' in medium:
+                self.b["mediums.%s.name" % medium_no] = medium['name']
+            if 'format_id' in medium:
+                self.b["mediums.%s.format_id" % medium_no] = medium['format_id']
+
+            if 'tracklist' in medium:
+                tracklist_id = self.b["mediums.%s.tracklist_id" % medium_no]
+                data = urllib2.urlopen('http://musicbrainz.org/ws/js/tracklist/%s' % tracklist_id)
+                old_tracklist = json.load(data)
+
+                edited_tracklist = []
+                for trackno, old_track in enumerate(old_tracklist['tracks']):
+                    new_track = medium['tracklist'][trackno]# if medium['tracklist'][trackno] is not None else {}
+                    name = new_track['name'] if 'name' in new_track else old_track['name']
+                    to = {
+                        'name': name,
+                        'length': new_track['length'] if 'length' in new_track else old_track['length'],
+                        'artist_credit': new_track['artist_credit'] if 'artist_credit' in new_track else old_track['artist_credit']
+                    }
+                    to['edit_sha1'] = base64.b64encode( hashlib.sha1(structureToString(to)).digest() )
+                    to['position'] = trackno
+                    to['deleted'] = 0
+                    to['number'] = new_track['number'] if 'number' in new_track else old_track['number']
+
+                    edited_tracklist.append(to)
+
+                self.b["mediums.%s.edits" % medium_no] = json.dumps(edited_tracklist)
+
         self.b.submit(name="step_editnote")
         page = self.b.response().read()
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
