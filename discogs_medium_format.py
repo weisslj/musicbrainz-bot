@@ -41,10 +41,11 @@ WITH
             /* discogs link should only be linked to this release */
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity1 = u.id AND l_release_url.entity0 <> r.id)
             /* this release should not have another discogs link attached */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id)
+            AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id
+                                    AND l_release_url.link IN (SELECT id FROM link WHERE link_type = 76))
             AND l.edits_pending = 0
     )
-SELECT r.id, r.gid, r.name, ra.discogs_url, ra.format, ac.name, ra.position, b.processed
+SELECT r.id, r.gid, r.name, ra.discogs_url, ra.format, ac.name AS ac_name, ra.position, b.processed
 FROM releases_with_fuzzy_format ra
 JOIN s_release r ON ra.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
