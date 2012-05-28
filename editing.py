@@ -7,6 +7,7 @@ import os
 import random
 import string
 import config as cfg
+import socket
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
@@ -412,9 +413,23 @@ class MusicBrainzClient(object):
 
         # upload cover art
         self.b.follow_link(tag="iframe")
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
-        self.b.add_file(open(localFile))
-        self.b.submit()
+        TRIES = 3
+        DELAY = 3
+        attempts = 0
+        while True:
+            try:
+                attempts += 1
+                self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
+                self.b.add_file(open(localFile))
+                self.b.submit()
+                break
+            except urllib2.URLError, e:
+                reason = getattr(e, 'reason', None)
+                if isinstance(reason, socket.timeout) and attempts <= TRIES:
+                    print "attempts: %s" % attempts
+                    self.b.back()
+                    continue
+                raise
         page = self.b.response().read()
         if "parent.document.getElementById" not in page:
             raise Exception('Error uploading cover art file')
