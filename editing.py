@@ -475,20 +475,18 @@ class MusicBrainzClient(object):
 
         # upload cover art
         self.b.follow_link(tag="iframe")
-        TRIES = 3
+        TRIES = 4
         DELAY = 3
         attempts = 0
         while True:
             try:
-                attempts += 1
                 self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
                 self.b.add_file(open(localFile))
                 self.b.submit()
                 break
-            except urllib2.URLError, e:
-                reason = getattr(e, 'reason', None)
-                if isinstance(reason, socket.timeout) and attempts <= TRIES:
-                    print "attempts: %s" % attempts
+            except (urllib2.HTTPError, urllib2.URLError):
+                if attempts < TRIES:
+                    attempts += 1
                     self.b.back()
                     continue
                 raise
