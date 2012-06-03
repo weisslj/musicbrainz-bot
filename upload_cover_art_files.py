@@ -21,14 +21,14 @@ class CoverArtArchiveReleaseInfo(object):
 			self.metadata = json.load(data)
 		except urllib2.HTTPError:
 			self.metadata = {'images':  [], 'release': 'http://musicbrainz.org/release/%s' % release_id}
-		
+
 	def hasType(self, type):
 		for image in self.metadata['images']:
 			for img_type in image['types']:
 				if img_type.lower() == type.lower():
 					return True
 		return False
-	
+
 	def getImages(self, type=None):
 		if type is None:
 			images = self.metadata['images']
