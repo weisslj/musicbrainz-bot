@@ -174,7 +174,10 @@ def wp_is_canonical_page(title, page_orig):
 def quote_page_title(title):
     return urllib.quote(title.encode('utf8').replace(' ', '_'), '/$,:;@')
 
-_unaccent_dict = {u'Æ': u'AE', u'æ': u'ae', u'Œ': u'OE', u'œ': u'oe', u'ß': 'ss'}
+_unaccent_dict = {u'Æ': u'AE', u'æ': u'ae', u'Œ': u'OE', u'œ': u'oe', u'ß': 'ss',
+                u"…": u"...", u"‘": u"'", u"’": u"'", u"‚": u"'", u"“": u"\"", u"”": u"\"",
+                u"„": u"\"", u"′": u"'", u"″": u"\"", u"‹": u"<", u"›": u">", u"‐": u"-",
+                u"‒": u"-", u"–": u"-", u"−": u"-", u"—": u"-", u"―": u"-"}
 _re_latin_letter = re.compile(r"^(LATIN [A-Z]+ LETTER [A-Z]+) WITH")
 def unaccent(string):
     """Remove accents ``string``."""
@@ -192,6 +195,18 @@ def unaccent(string):
                 pass
         result.append(char)
     return "".join(result)
+
+_re_duration = re.compile(r"^(\d{1,2})\:(\d{2})")
+def durationToMS(string):
+    m = _re_duration.match(string)
+    if not m:
+        return None
+    return (int(m.group(1))*60 + int(m.group(2)))*1000
+
+def msToDuration(length):
+    minutes = int( length/1000/60 ) % 60
+    seconds = int( length/1000 ) % 60
+    return "%02d:%02d" % (minutes, seconds)
 
 def escape_query(s):
     s = re.sub(r'\bOR\b', 'or', s)
