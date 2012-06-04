@@ -32,7 +32,7 @@ CREATE TABLE bot_discogs_amz_cover_art (
 
 mbid = sys.argv[1] if len(sys.argv) > 1 else None
 if mbid:
-    filter_clause = "r.gid = '%s'" % specific_mbid
+    filter_clause = "r.gid = '%s'" % mbid
 else:
     filter_clause = "rm.cover_art_presence != 'present'::cover_art_presence"
 
@@ -67,7 +67,7 @@ FROM releases_wo_coverart tr
 JOIN s_release r ON tr.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_amz_cover_art b ON r.gid = b.gid
-ORDER BY b.processed NULLS FIRST, r.artist_credit, r.date_year NULLS LAST, r.name
+ORDER BY b.processed NULLS FIRST, r.artist_credit, r.name
 LIMIT 75
 """
 
@@ -122,9 +122,16 @@ def discogs_get_secondary_images(url):
         release_id = int(m.group(1))
         release = discogs.Release(release_id)
         if 'images' in release.data and len(release.data['images']) >= 2:
+            found_primary = False
             for image in release.data['images']:
                 if image['type'] == 'secondary':
                     images.append(image)
+                elif image['type'] == 'primary':
+                    found_primary = True
+            # if all images are secondary, it means first one as already been considered as the primary one,
+            # so it should be excluded
+            if not found_primary:
+                images = images[1:]
     return images
 
 for release in db.execute(query):
