@@ -3,6 +3,7 @@ import re
 import urllib2
 import socket
 from collections import defaultdict
+from optparse import OptionParser
 import sqlalchemy
 import Levenshtein
 import amazonproduct
@@ -245,7 +246,7 @@ def cat_compare(a, b, country):
     b = cat_normalize(b, country)
     return a and b and a == b
 
-def main():
+def main(verbose=False):
     edits_left = mb.edits_left()
     releases = [(r, gid, barcode, name, ac, country, year, month, day) for r, gid, barcode, name, ac, country, year, month, day in db.execute(query_releases_without_asin)]
     count = len(releases)
@@ -260,33 +261,40 @@ def main():
         if country not in store_map_rev:
             continue
         if barcode.lstrip('0') in barcodes_hist and barcodes_hist[barcode.lstrip('0')] > 1:
-            out('  two releases with same barcode, skip for now')
+            if verbose:
+                out('  two releases with same barcode, skip for now')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
-        out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
-        out(u'%s http://musicbrainz.org/release/%s %s %s' % (name, gid, barcode, country))
+        if verbose:
+            out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
+            out(u'%s http://musicbrainz.org/release/%s %s %s' % (name, gid, barcode, country))
         try:
             item = amazon_get_asin(barcode, country)
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
             continue
         if item is None:
-            out('  not found, continue')
+            if verbose:
+                out('  not found, continue')
             db.execute("INSERT INTO bot_asin_missing (gid) VALUES (%s)", gid)
             continue
         url = amazon_url_cleanup(str(item.DetailPageURL), str(item.ASIN))
-        out(url)
+        if verbose:
+            out(url)
         if item.ASIN in asins:
-            out('  skip, ASIN already in DB')
+            if verbose:
+                out('  skip, ASIN already in DB')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         if not 'LargeImage' in item.__dict__:
-            out('  skip, has no image')
+            if verbose:
+                out('  skip, has no image')
             db.execute("INSERT INTO bot_asin_nocover (gid) VALUES (%s)", gid)
             continue
         attrs = item.ItemAttributes
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
-            out('  skip, is marked as Import')
+            if verbose:
+                out('  skip, is marked as Import')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         amazon_name = unicode(attrs.Title)
@@ -302,17 +310,20 @@ def main():
                     matched = True
                     break
             if not matched and country == 'JP':
-                out(u'  CAT NR MISMATCH, ARGH!')
+                if verbose:
+                    out(u'  CAT NR MISMATCH, ARGH!')
                 db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
                 continue
         if not matched:
             catnr = None
             if not are_similar(name, amazon_name):
-                out(u'  Similarity too small: %s <-> %s' % (name, amazon_name))
+                if verbose:
+                    out(u'  Similarity too small: %s <-> %s' % (name, amazon_name))
                 db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
                 continue
         if (gid, url) in asin_set:
-            out(u'  already linked earlier (probably got removed by some editor!')
+            if verbose:
+                out(u'  already linked earlier (probably got removed by some editor!')
             continue
         text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
         if catnr:
@@ -346,6 +357,7 @@ def main():
         re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
         text = re_bold_import.sub(ur"'''\1'''", text)
         try:
+            out(u'http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
             mb.add_url('release', gid, 77, url, text)
             db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
             edits_left -= 1
@@ -353,5 +365,9 @@ def main():
             out(e)
 
 if __name__ == '__main__':
+    parser = OptionParser()
+    parser.add_option('-v', '--verbose', action='store_true', default=False,
+            help='be more verbose')
+    (options, args) = parser.parse_args()
     with PIDFile('/tmp/mbbot_asin_links.pid'):
-        main()
+        main(options.verbose)
