@@ -2,6 +2,7 @@
 import re
 import urllib2
 import socket
+from optparse import OptionParser
 import sqlalchemy
 import Levenshtein
 import discogs_client as discogs
@@ -121,53 +122,63 @@ def discogs_get_master(release_urls):
             if master:
                 yield (master.title, master._id, discogs_artists_str(master.artists))
 
-def main():
+def main(verbose=False):
     rgs = [(rg, gid, name) for rg, gid, name in db.execute(query_rg_without_master)]
     count = len(rgs)
     for i, (rg, gid, name) in enumerate(rgs):
         if gid in discogs_release_group_missing or gid in discogs_release_group_problematic:
             continue
         urls = set(url for url, in db.execute(query_rg_release_discogs, rg))
-        out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
-        out(u'%s http://musicbrainz.org/release-group/%s' % (name, gid))
+        if verbose:
+            out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
+            out(u'%s http://musicbrainz.org/release-group/%s' % (name, gid))
         try:
             masters = list(discogs_get_master(urls))
         except (discogs.HTTPError, discogs.requests.ConnectionError) as e:
             out(e)
             continue
         if len(masters) == 0:
-            out(u'  aborting, no Discogs master!')
+            if verbose:
+                out(u'  aborting, no Discogs master!')
             db.execute("INSERT INTO bot_discogs_release_group_missing (gid) VALUES (%s)", gid)
             continue
         if len(set(masters)) > 1:
-            out(u'  aborting, releases with different Discogs master in one group!')
+            if verbose:
+                out(u'  aborting, releases with different Discogs master in one group!')
             db.execute("INSERT INTO bot_discogs_release_group_problematic (gid) VALUES (%s)", gid)
             continue
         if len(masters) != len(urls):
-            out(u'  aborting, releases without Discogs master in group!')
+            if verbose:
+                out(u'  aborting, releases without Discogs master in group!')
             db.execute("INSERT INTO bot_discogs_release_group_problematic (gid) VALUES (%s)", gid)
             continue
         master_name, master_id, master_artists = masters[0]
         if not are_similar(master_name, name):
-            out(u'  Similarity too small: %s <-> %s' % (name, master_name))
+            if verbose:
+                out(u'  Similarity too small: %s <-> %s' % (name, master_name))
             db.execute("INSERT INTO bot_discogs_release_group_problematic (gid) VALUES (%s)", gid)
             continue
         master_url = 'http://www.discogs.com/master/%d' % master_id
         if (gid, master_url) in discogs_release_group_set:
-            out(u'  already linked earlier (probably got removed by some editor!')
+            if verbose:
+                out(u'  already linked earlier (probably got removed by some editor!')
             continue
         if len(urls) >= 2:
             text = u'There are %d distinct Discogs links in this release group, and all point to this master URL.\n' % len(urls)
         else:
             text = u'There is one Discogs link in this release group, and it points to this master URL.\n%s\n' % list(urls)[0]
         text += u'Also, the name of the Discogs master “%s” (by %s) is similar to the release group name.' % (master_name, master_artists)
-        out(u'  %s\n  %s' % (master_url, text))
         try:
+            out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid,master_url))
             mb.add_url('release_group', gid, 90, master_url, text, auto=(len(urls)>=2))
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
 
 if __name__ == '__main__':
+    parser = OptionParser()
+    parser.add_option('-v', '--verbose', action='store_true', default=False,
+            help='be more verbose')
+    (options, args) = parser.parse_args()
     with PIDFile('/tmp/mbbot_discogs_links_release_groups.pid'):
-        main()
+        main(options.verbose)
