@@ -233,7 +233,7 @@ def cat_normalize(cat, country):
         m = re.match(ur'^([0-9a-zA-Z]+)[ .-]*([0-9]+)(?:[^0-9]|$)', cat)
         if m:
             cat = (u'%s%s' % m.groups()).upper()
-            m = re.match(ur'^([A-Z]*)0*([0-9]+.*)$', cat)
+            m = re.match(ur'^([A-Z]+)0*([0-9]+.*)$', cat)
             if m:
                 cat = u'%s%s' % m.groups()
             return cat
