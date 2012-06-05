@@ -43,9 +43,12 @@ WITH
         FROM release r
             JOIN release_meta rm ON rm.id = r.id
             JOIN l_release_url discogs_link ON discogs_link.entity0 = r.id AND discogs_link.link IN (SELECT id FROM link WHERE link_type = 76)
+                AND discogs_link.edits_pending = 0
             JOIN url discogs_url ON discogs_url.id = discogs_link.entity1
-            JOIN l_release_url amz_link ON amz_link.entity0 = r.id AND amz_link.link IN (SELECT id FROM link WHERE link_type = 77)
-            JOIN url amz_url ON amz_url.id = amz_link.entity1
+            LEFT JOIN l_release_url amz_link ON amz_link.entity0 = r.id AND amz_link.link IN (SELECT id FROM link WHERE link_type = 77)
+                AND amz_link.edits_pending = 0
+            LEFT JOIN url amz_url ON amz_url.id = amz_link.entity1
+            LEFT JOIN release_status rs ON r.status = rs.id
             JOIN country rc ON rc.id = r.country AND rc.iso_code = 'FR'
         WHERE """ + filter_clause + """
             /* Discogs link should only be linked to this release */
@@ -53,14 +56,13 @@ WITH
             /* this release should not have another Discogs link attached */
             AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> discogs_url.id
                                 AND l.link IN (SELECT id FROM link WHERE link_type = 76))
-            AND discogs_link.edits_pending = 0
             /* Amazon link should only be linked to this release */
             AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = amz_url.id AND l.entity0 <> r.id)
             /* this release should not have another Amazon link attached */
             AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> amz_url.id
                                 AND l.link IN (SELECT id FROM link WHERE link_type = 77))
-            AND amz_link.edits_pending = 0
-            AND r.barcode IS NOT NULL
+            /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
+            AND (rs.name IN ('Promotion','Bootleg') OR date_year < 1980 OR (r.barcode IS NOT NULL AND amz_url.url IS NOT NULL))
     )
 SELECT r.id, r.gid, r.name, tr.discogs_url, tr.amz_url, ac.name AS artist, r.barcode, b.processed
 FROM releases_wo_coverart tr
@@ -68,7 +70,7 @@ JOIN s_release r ON tr.id = r.id
 JOIN s_artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_amz_cover_art b ON r.gid = b.gid
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.name
-LIMIT 75
+LIMIT 100
 """
 
 def amz_get_info(url):   
