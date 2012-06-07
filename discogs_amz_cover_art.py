@@ -5,6 +5,7 @@ import os
 import re
 import discogs_client as discogs
 import sqlalchemy
+import amazonproduct
 from amazonproduct.contrib.retry import RetryAPI
 import time
 from editing import MusicBrainzClient
@@ -27,6 +28,13 @@ CREATE TABLE bot_discogs_amz_cover_art (
     gid uuid NOT NULL,
     processed timestamp with time zone DEFAULT now(),
     CONSTRAINT bot_discogs_amz_cover_art_pkey PRIMARY KEY (gid)
+);
+
+CREATE TABLE bot_release_artwork_url (
+    release uuid NOT NULL,
+    url character varying,
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_release_artwork_url_pkey PRIMARY KEY (release, url)
 );
 """
 
@@ -136,13 +144,29 @@ def discogs_get_secondary_images(url):
                 images = images[1:]
     return images
 
+def save_processed(release, url):
+    db.execute("INSERT INTO bot_release_artwork_url (release, url) VALUES (%s, %s)", (release, url))
+
+def already_processed(release, url):
+    res = db.execute("SELECT 1 FROM bot_release_artwork_url WHERE release = %s AND url = %s", (release, url))
+    return res.scalar() is not None
+
+def submit_cover_art(release, url, types):
+    if already_processed(release, url):
+        colored_out(bcolors.NONE, " * skipping already submitted image '%s'" % (url,))
+    else:
+        colored_out(bcolors.OKGREEN, " * Adding " + ",".join(types) + (" " if len(types)>0 else "") + "cover art '%s'" % (url,))
+        time.sleep(5)
+        mb.add_cover_art(release, url, types)
+        save_processed(release, url)
+
 for release in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Examining release "%s" by "%s" http://musicbrainz.org/release/%s' % (release['name'], release['artist'], release['gid']))
     colored_out(bcolors.HEADER, ' * Discogs = %s' % (release['discogs_url'],))
     if release['amz_url'] is not None:
         colored_out(bcolors.HEADER, ' * Amazon = %s' % (release['amz_url'],))
-    
-    # front cover
+
+    # Front cover
     discogs_image = discogs_get_primary_image(release['discogs_url'])
     if discogs_image is None:
        discogs_score = 0
@@ -152,26 +176,23 @@ for release in db.execute(query):
         front_uri = discogs_image['uri']
 
     (amz_image, amz_barcode) = amz_get_info(release['amz_url'])
-    if amz_barcode is not None and release['barcode'] is not None and re.sub(r'^(0+)', '', amz_barcode) != re.sub(r'^(0+)', '', release['barcode']):
+    if amz_barcode is not None and release['barcode'] is not None \
+        and re.sub(r'^(0+)', '', amz_barcode) != re.sub(r'^(0+)', '', release['barcode']):
         colored_out(bcolors.FAIL, " * Amz barcode doesn't match MB barcode (%s vs %s) => skipping" % (amz_barcode, release['barcode']))
         continue
-        
+
     if amz_image is not None:
         amz_score = amz_image.Height * amz_image.Width
         colored_out(bcolors.NONE, ' * front cover: AMZ score: %s vs Discogs score: %s' % (amz_score, discogs_score))
         if amz_score > discogs_score:
             front_uri = amz_image.URL.pyval
-        
-    if front_uri is not None:
-        time.sleep(5)
-        colored_out(bcolors.OKGREEN, " * Adding front cover art '%s'" % (front_uri,))
-        mb.add_cover_art(release['gid'], front_uri, ['front'])
 
-    # other images
+    if front_uri is not None:
+        submit_cover_art(release['gid'], front_uri, ['front'])
+
+    # Other images
     for image in discogs_get_secondary_images(release['discogs_url']):
-        colored_out(bcolors.OKGREEN, " * Adding cover art '%s'" % (image['uri'],))
-        time.sleep(5)
-        mb.add_cover_art(release['gid'], image['uri'])
+        submit_cover_art(release['gid'], image['uri'], [])
 
     out()
 
