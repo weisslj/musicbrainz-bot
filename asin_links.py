@@ -2,6 +2,7 @@
 import re
 import urllib2
 import socket
+import datetime
 from collections import defaultdict
 from optparse import OptionParser
 import sqlalchemy
@@ -176,13 +177,23 @@ def amazon_url_cleanup(url, asin):
         return 'http://www.amazon.%s/gp/product/%s' % (tld, asin)
     return None
 
-def amazon_get_asin(barcode, country):
+def gen_item_date_sort_key(date):
+    def item_date_sort_key(item):
+        attrs = item.ItemAttributes
+        if 'ReleaseDate' in attrs.__dict__:
+            amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+        else:
+            amazon_date = datetime.datetime(1, 1, 1)
+        return (abs(date - amazon_date), item)
+    return item_date_sort_key
+
+def amazon_get_asin(barcode, country, date):
     params = {
         'ResponseGroup' : 'Medium,Images',
         'SearchIndex' : 'Music',
         'IdType' : barcode_type(barcode),
     }
-    item = None
+    items = []
     for loc in store_map_rev[country]:
         if loc not in amazon_api:
             amazon_api[loc] = amazonproduct.API(locale=loc)
@@ -196,8 +207,9 @@ def amazon_get_asin(barcode, country):
         attrs = item.ItemAttributes
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
             continue
-        break
-    return item
+        items.append(item)
+    items.sort(key=gen_item_date_sort_key(date))
+    return items[0] if items else None
 
 def release_format(r):
     hist = defaultdict(int)
@@ -269,7 +281,8 @@ def main(verbose=False):
             out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
             out(u'%s http://musicbrainz.org/release/%s %s %s' % (name, gid, barcode, country))
         try:
-            item = amazon_get_asin(barcode, country)
+            mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
+            item = amazon_get_asin(barcode, country, mb_date)
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
             continue
