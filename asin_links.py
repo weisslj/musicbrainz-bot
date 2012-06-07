@@ -335,7 +335,7 @@ def main(verbose=False):
             if not matched and country == 'JP':
                 if verbose:
                     out(u'  CAT NR MISMATCH, ARGH!')
-                db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
+                #db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
                 continue
         if not matched:
             catnr = None
