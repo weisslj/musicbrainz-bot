@@ -242,6 +242,7 @@ def artist_countries(r):
 
 def cat_normalize(cat, country):
     if country == 'JP':
+        cat = re.sub(ur'[^A-Za-z0-9. -]+', ur'', cat)
         m = re.match(ur'^([0-9a-zA-Z]+)[ .-]*([0-9]+)(?:[^0-9]|$)', cat)
         if m:
             cat = (u'%s%s' % m.groups()).upper()
