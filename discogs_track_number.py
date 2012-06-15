@@ -103,7 +103,7 @@ for release in db.execute(query):
                 break
             
             if discogs_track['position'] != mb_track['number'] \
-                and re.match(r'[A-Z][\.-]?\d*', discogs_track['position']) \
+                and re.match(r'^[A-Z]+[\.-]?\d*', discogs_track['position']) \
                 and re.match(r'^\d+$', mb_track['number']):
                 new_track['number'] = discogs_track['position']
                 changed = True

@@ -8,18 +8,14 @@
 # published by Sam Hocevar. See COPYING for more details.
 
 import re
-import urllib
-import urllib2
 import mechanize
 import sqlalchemy
 import musicbrainzngs
-import json
-import time
-from kitchen.text.converters import to_bytes, to_unicode
-from datetime import datetime
+from kitchen.text.converters import to_unicode
 from picard.similarity import similarity2
 from editing import MusicBrainzClient
 from utils import out, colored_out, bcolors
+from mbbot.source.spotify import SpotifyWebService
 import config as cfg
 
 import codecs
@@ -75,56 +71,6 @@ ORDER BY m.position, t.position
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz')
-
-class SpotifyWebService(object):
-    """
-    This product uses a SPOTIFY API but is not endorsed, certified or otherwise
-    approved in any way by Spotify. Spotify is the registered trade mark of the
-    Spotify Group.
-    """
-
-    def __init__(self):
-        self.last_request_time = datetime.min
-
-    def _fetch_json(self, url, params):
-        self._check_rate_limit()
-        # urllib.urlencode expects str objects, not unicode
-        fixed = dict([(to_bytes(b[0]), to_bytes(b[1]))
-                      for b in params.items()])
-        request = urllib2.Request(url + '?' + urllib.urlencode(fixed))
-        request.add_header('Accept', 'application/json')
-        response = urllib2.urlopen(request)
-        data = json.loads(response.read())
-        self.last_request_time = datetime.now()
-        return data
-
-    def _check_rate_limit(self):
-        diff = datetime.now() - self.last_request_time
-        if diff.total_seconds() < 2.0:
-            time.sleep(2.0 - diff.total_seconds())
-
-    def lookup(self, uri, detail=0):
-        """
-        Detail ranges from 0 to 2 and determines the level of detail of child
-        objects (i.e. for an artist, detail changes how much information is
-        returned on albums).
-        """
-        params = {'uri': uri}
-        if detail != 0:
-            if 'artist' in uri:
-                extras = [None, 'album', 'albumdetail'][detail]
-            elif 'album' in uri:
-                extras = [None, 'track', 'trackdetail'][detail]
-            else:
-                extras = None
-            if extras:
-                params['extras'] = extras
-        data = self._fetch_json('http://ws.spotify.com/lookup/1/', params)
-        return data[uri.split(':')[1]]
-
-    def search_albums(self, query):
-        data = self._fetch_json('http://ws.spotify.com/search/1/album', {'q': query})
-        return data['albums']
 
 def similarity(a, b):
     return int(similarity2(to_unicode(a), to_unicode(b)) * 100)

@@ -11,7 +11,8 @@ import config as cfg
 import hashlib
 import base64
 import socket
-from utils import structureToString
+from PIL import Image
+from utils import structureToString, out
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
@@ -457,18 +458,32 @@ class MusicBrainzClient(object):
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
 
-    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False):
+    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False, convertToJPEG=False):
 
         # download image if it's remotely hosted
         image_is_remote = True if image.startswith(('http://', 'https://', 'ftp://')) else False
         if image_is_remote:
             u = urllib2.urlopen(image)
-            localFile = cfg.TMP_DIR + '/' + ''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(8))
+            f,ext = os.path.splitext(image)
+            localFile = '%s/%s%s' % (cfg.TMP_DIR, ''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(8)), ext)
             tmpfile = open(localFile, 'w')
             tmpfile.write(u.read())
             tmpfile.close()
         else:
             localFile = image
+
+        # convert image to JPEG if needed (until CAA supports other formats)
+        f, ext = os.path.splitext(localFile)
+        if convertToJPEG and not ext.lower().endswith(('jpeg', 'jpg')):
+            out(' * converting image %s to JPEG' % localFile)
+            im = Image.open(localFile)
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            outfile = f + ".jpg"
+            im.save(outfile, "JPEG")
+            if image_is_remote:
+                os.remove(localFile)
+            localFile = outfile
 
         self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
         page = self.b.response().read()
