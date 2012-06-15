@@ -57,7 +57,17 @@ WITH
                 AND amz_link.edits_pending = 0
             LEFT JOIN url amz_url ON amz_url.id = amz_link.entity1
             LEFT JOIN release_status rs ON r.status = rs.id
+            JOIN (SELECT DISTINCT acn.artist_credit
+                FROM artist_credit_name acn
+                JOIN artist a ON acn.artist = a.id
+                JOIN country c ON a.country = c.id AND (c.iso_code = 'FR' OR a.id = 1)
+            ) tc ON r.artist_credit = tc.artist_credit
             JOIN country rc ON rc.id = r.country AND rc.iso_code = 'FR'
+            LEFT JOIN (SELECT encycl_link.entity0, encycl_url.url
+                FROM l_release_url encycl_link
+                JOIN url encycl_url ON encycl_url.id = encycl_link.entity1 AND encycl_url.url ~ 'encyclopedisque.fr/images/'
+                WHERE encycl_link.link IN (SELECT id FROM link WHERE link_type = 78) AND encycl_link.edits_pending = 0
+            ) encycl_link ON encycl_link.entity0 = r.id
         WHERE """ + filter_clause + """
             /* Discogs link should only be linked to this release */
             AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = discogs_url.id AND l.entity0 <> r.id)
@@ -70,7 +80,12 @@ WITH
             AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> amz_url.id
                                 AND l.link IN (SELECT id FROM link WHERE link_type = 77))
             /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
-            AND (rs.name IN ('Promotion','Bootleg') OR date_year < 1980 OR (r.barcode IS NOT NULL AND amz_url.url IS NOT NULL))
+            AND (rs.name IN ('Promotion','Bootleg')
+                OR date_year < 1980
+                OR (r.barcode IS NOT NULL AND amz_url.url IS NOT NULL)
+                OR encycl_link.url IS NOT NULL
+                """ + ("OR TRUE" if mbid else "") + """
+            )
     )
 SELECT r.id, r.gid, r.name, tr.discogs_url, tr.amz_url, ac.name AS artist, r.barcode, b.processed
 FROM releases_wo_coverart tr
