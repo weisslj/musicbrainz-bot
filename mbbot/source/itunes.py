@@ -3,6 +3,7 @@ import urllib
 import re
 import json
 import datetime
+import time
 from datetime import datetime
 from kitchen.text.converters import to_bytes
 from xml.etree import ElementTree
