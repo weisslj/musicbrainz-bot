@@ -3,23 +3,32 @@
 import sys
 import os
 import re
+import urllib2
 import discogs_client as discogs
 import sqlalchemy
 import amazonproduct
+from PIL import Image
+from cStringIO import StringIO
 from amazonproduct.contrib.retry import RetryAPI
 import time
 from editing import MusicBrainzClient
 import socket
 from utils import out, colored_out, bcolors
 import config as cfg
+import config_caa as cfg_caa
+from mbbot.source.spotify import SpotifyWebService
+from mbbot.source.itunes import ItunesSearchAPI
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute("SET search_path TO musicbrainz")
 
-mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+mb = MusicBrainzClient(cfg_caa.MB_USERNAME, cfg_caa.MB_PASSWORD, cfg_caa.MB_SITE)
 
 discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
+
+spotify = SpotifyWebService()
+itunes = ItunesSearchAPI()
 
 socket.setdefaulttimeout(300)
 
@@ -172,35 +181,69 @@ def submit_cover_art(release, url, types):
     else:
         colored_out(bcolors.OKGREEN, " * Adding " + ",".join(types) + (" " if len(types)>0 else "") + "cover art '%s'" % (url,))
         time.sleep(5)
-        mb.add_cover_art(release, url, types)
+        #mb.add_cover_art(release, url, types)
+        mb.add_cover_art(release, url, types, None, u'', u'', False, True)
         save_processed(release, url)
 
 for release in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Examining release "%s" by "%s" http://musicbrainz.org/release/%s' % (release['name'], release['artist'], release['gid']))
-    colored_out(bcolors.HEADER, ' * Discogs = %s' % (release['discogs_url'],))
-    if release['amz_url'] is not None:
-        colored_out(bcolors.HEADER, ' * Amazon = %s' % (release['amz_url'],))
 
     # Front cover
+    # Start with Discogs if available
+    colored_out(bcolors.HEADER, ' * Discogs = %s' % (release['discogs_url'],))
     discogs_image = discogs_get_primary_image(release['discogs_url'])
     if discogs_image is None:
-       discogs_score = 0
+       best_score = 0
        front_uri = None
     else:
-        discogs_score = discogs_image['height'] * discogs_image['width']
+        best_score = discogs_image['height'] * discogs_image['width']
         front_uri = discogs_image['uri']
+        colored_out(bcolors.NONE, ' * Discogs score:\t%s \t %s' % (best_score, front_uri))
 
-    (amz_image, amz_barcode) = amz_get_info(release['amz_url'])
+    # Evaluate Amazon
+    if release['amz_url'] is not None:
+        colored_out(bcolors.HEADER, ' * Amazon = %s' % (release['amz_url'],))
+    amz_image, amz_barcode = amz_get_info(release['amz_url'])
+    # Amazon: check barcode matches
     if amz_barcode is not None and release['barcode'] is not None \
         and re.sub(r'^(0+)', '', amz_barcode) != re.sub(r'^(0+)', '', release['barcode']):
         colored_out(bcolors.FAIL, " * Amz barcode doesn't match MB barcode (%s vs %s) => skipping" % (amz_barcode, release['barcode']))
         continue
-
     if amz_image is not None:
         amz_score = amz_image.Height * amz_image.Width
-        colored_out(bcolors.NONE, ' * front cover: AMZ score: %s vs Discogs score: %s' % (amz_score, discogs_score))
-        if amz_score > discogs_score:
+        colored_out(bcolors.NONE, ' * Amazon score:\t%s \t %s' % (amz_score, amz_image.URL.pyval))
+        if amz_score > best_score:
             front_uri = amz_image.URL.pyval
+            best_score = amz_score
+
+    # Evaluate Spotify
+    if release['barcode'] is not None and release['barcode'] != "":
+        albums = spotify.search_albums('upc:%s' % release['barcode'])
+        if len(albums) == 1:
+            colored_out(bcolors.WARNING, ' * Spotify = https://embed.spotify.com/?uri=%s&view=coverart' % (albums[0]['href'],))
+            image_url = spotify.artwork_url(albums[0]['href'])
+            if image_url is not None:
+                img_file = urllib2.urlopen(image_url)
+                im = Image.open(StringIO(img_file.read()))
+                spotify_score = im.size[0] * im.size[1]
+                colored_out(bcolors.NONE, ' * Spotify score:\t%s \t %s' % (spotify_score, image_url))
+                if spotify_score >= best_score:
+                    front_uri = image_url
+                    best_score = spotify_score
+
+    # Evaluate iTunes
+    if release['barcode'] is not None and release['barcode'] != "":
+        albums = itunes.search({'upc': release['barcode']})
+        if len(albums) == 1:
+            colored_out(bcolors.WARNING, ' * ITunes = %s' % (albums[0]['collectionViewUrl'],))
+            image_url = albums[0]['artworkUrl100'].replace('100x100', '600x600')
+            img_file = urllib2.urlopen(image_url)
+            im = Image.open(StringIO(img_file.read()))
+            itunes_score = im.size[0] * im.size[1]
+            colored_out(bcolors.NONE, ' * iTunes score:\t%s \t %s' % (itunes_score, image_url))
+            if itunes_score >= best_score:
+                front_uri = image_url
+                best_score = itunes_score
 
     if front_uri is not None:
         submit_cover_art(release['gid'], front_uri, ['front'])
