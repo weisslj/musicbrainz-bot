@@ -514,7 +514,8 @@ class MusicBrainzClient(object):
         # Will probably fail. Solution is to install patched mechanize:
         # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
         self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
-        self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
+        try: self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
+        except mechanize._form.ControlNotFoundError: pass
         submitted_types = []
         types_control = self.b.find_control(name='add-cover-art.type_id')
         for type in types:

@@ -1,6 +1,8 @@
+import urllib
 import urllib2
 import json
-from kitchen.text.converters import to_bytes, to_unicode
+import time
+from kitchen.text.converters import to_bytes
 from datetime import datetime
 from bs4 import BeautifulSoup
 
@@ -58,5 +60,5 @@ class SpotifyWebService(object):
     def artwork_url(self, uri):
         url = 'https://embed.spotify.com/?uri=%s&view=coverart' % uri
         soup = BeautifulSoup(urllib2.urlopen(url))
-        imgs = soup.select('img.album-art.fixed')
-        return imgs[0]['src'] if len(imgs) > 0 else None
+        tracks = soup.select('#content li')
+        return tracks[0]['data-ca'] if len(tracks) > 0 else None
