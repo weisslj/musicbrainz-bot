@@ -2,6 +2,7 @@
 import random
 import locale
 from collections import defaultdict
+from optparse import OptionParser
 import pprint
 import itertools
 import operator
@@ -9,6 +10,8 @@ import urllib2
 import sqlalchemy
 from editing import MusicBrainzClient
 import utils
+from utils import out
+from mbbot.utils.pidfile import PIDFile
 import config as cfg
 import iso15924
 
@@ -79,46 +82,57 @@ query_scripts = '''SELECT DISTINCT id, iso_code, name FROM script'''
 iso15924_to_mb = dict((iso_code, {'id': script_id, 'name': name}) for (script_id, iso_code, name) in db.execute(query_scripts))
 mb_to_iso15924 = dict((v['id'], k) for k, v in iso15924_to_mb.items())
 
-r_by_ac = defaultdict(list)
-for count_all, (ac, release, gid, release_name, old_script_id) in enumerate(db.execute(query_releases_with_unknown_script)):
-    track_names = u''.join(track_name for (track_name,) in db.execute(query_track_names, release))
-    medium_names = u''.join(medium_name for (medium_name,) in db.execute(query_medium_names, release) if medium_name)
-    if len(track_names) < 5:
-        utils.out('too short http://musicbrainz.org/release/%s' % gid)
-        continue
-    scripts = get_scripts(track_names + medium_names + release_name)
-    scripts_sorted = sorted(scripts.iteritems(), key=operator.itemgetter(1), reverse=True)
-    stats[', '.join(scripts)] += 1
-    if (len(scripts) == 1 or (len(scripts) == 2 and 'Zyyy' in scripts)) and float(scripts_sorted[0][1])/sum(scripts.values()) > 0.40:
-        script = scripts_sorted[0][0]
-        #if script == 'Latn':
-        #    continue
-        if script in whitelisted_iso_codes and old_script_id != iso15924_to_mb[script]['id']:
-            utils.out('http://musicbrainz.org/release/%s' % gid)
-            utils.out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', script))
-            r_by_ac[ac].append((gid, old_script_id, script, scripts))
-#exit()
-pprint.pprint(dict(stats))
-r_grouped = r_by_ac.values()
-random.shuffle(r_grouped)
-r_flat = list(itertools.chain(*r_grouped))
-count = len(r_flat)
-utils.out('script can be set for %d out of %d releases' % (count, count_all))
-
-for i, (gid, old_script_id, new_script, script_stats) in enumerate(r_flat):
-    utils.out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
-    utils.out('http://musicbrainz.org/release/%s' % gid)
-    utils.out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', new_script))
-    new_script_name = iso15924_to_mb[new_script]['name']
-    new_script_id = iso15924_to_mb[new_script]['id']
-    text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
-    if not old_script_id:
-        old_script_id = ''
-    for j in range(5):
-        try:
-            mb.set_release_script(gid, old_script_id, new_script_id, text, auto=True)
-        except urllib2.HTTPError, e:
-            if e.code == 503:
-                utils.out(e)
-                continue
-        break
+def main(verbose=False):
+    r_by_ac = defaultdict(list)
+    for count_all, (ac, release, gid, release_name, old_script_id) in enumerate(db.execute(query_releases_with_unknown_script)):
+        track_names = u''.join(track_name for (track_name,) in db.execute(query_track_names, release))
+        medium_names = u''.join(medium_name for (medium_name,) in db.execute(query_medium_names, release) if medium_name)
+        if len(track_names) < 5:
+            if verbose:
+                out('too short http://musicbrainz.org/release/%s' % gid)
+            continue
+        scripts = get_scripts(track_names + medium_names + release_name)
+        scripts_sorted = sorted(scripts.iteritems(), key=operator.itemgetter(1), reverse=True)
+        stats[', '.join(scripts)] += 1
+        if (len(scripts) == 1 or (len(scripts) == 2 and 'Zyyy' in scripts)) and float(scripts_sorted[0][1])/sum(scripts.values()) > 0.40:
+            script = scripts_sorted[0][0]
+            #if script == 'Latn':
+            #    continue
+            if script in whitelisted_iso_codes and old_script_id != iso15924_to_mb[script]['id']:
+                if verbose:
+                    out('http://musicbrainz.org/release/%s' % gid)
+                    out('%s -> %s' % (mb_to_iso15924[old_script_id] if old_script_id else '', script))
+                r_by_ac[ac].append((gid, old_script_id, script, scripts))
+    if verbose:
+        out(pprint.pformat(dict(stats)))
+    r_grouped = r_by_ac.values()
+    random.shuffle(r_grouped)
+    r_flat = list(itertools.chain(*r_grouped))
+    count = len(r_flat)
+    if verbose:
+        out('script can be set for %d out of %d releases' % (count, count_all))
+    
+    for i, (gid, old_script_id, new_script, script_stats) in enumerate(r_flat):
+        if verbose:
+            out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
+        out('http://musicbrainz.org/release/%s %s -> %s' % (gid, mb_to_iso15924[old_script_id] if old_script_id else '', new_script))
+        new_script_name = iso15924_to_mb[new_script]['name']
+        new_script_id = iso15924_to_mb[new_script]['id']
+        text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
+        if not old_script_id:
+            old_script_id = ''
+        for j in range(5):
+            try:
+                mb.set_release_script(gid, old_script_id, new_script_id, text, auto=True)
+            except urllib2.HTTPError, e:
+                if e.code == 503:
+                    out(e)
+                    continue
+            break
+if __name__ == '__main__':
+    parser = OptionParser()
+    parser.add_option('-v', '--verbose', action='store_true', default=False,
+            help='be more verbose')
+    (options, args) = parser.parse_args()
+    with PIDFile('/tmp/mbbot_set_script.pid'):
+        main(options.verbose)
