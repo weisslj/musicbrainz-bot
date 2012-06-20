@@ -111,7 +111,7 @@ def main(verbose=False):
     count = len(r_flat)
     if verbose:
         out('script can be set for %d out of %d releases' % (count, count_all))
-    
+
     for i, (gid, old_script_id, new_script, script_stats) in enumerate(r_flat):
         if verbose:
             out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
@@ -121,14 +121,11 @@ def main(verbose=False):
         text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
         if not old_script_id:
             old_script_id = ''
-        for j in range(5):
-            try:
-                mb.set_release_script(gid, old_script_id, new_script_id, text, auto=True)
-            except urllib2.HTTPError, e:
-                if e.code == 503:
-                    out(e)
-                    continue
-            break
+        try:
+            mb.set_release_script(gid, old_script_id, new_script_id, text, auto=True)
+        except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
+            out(e)
+
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('-v', '--verbose', action='store_true', default=False,
