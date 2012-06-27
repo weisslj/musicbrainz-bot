@@ -3,6 +3,7 @@ MB_USERNAME = 'xxx'
 MB_PASSWORD = 'xxx'
 
 MB_DB = 'postgresql://musicbrainz@127.0.0.1:5432/musicbrainz'
+BOT_SCHEMA_DB = 'mbbot'
 
 WWW_USER_AGENT = None
 
