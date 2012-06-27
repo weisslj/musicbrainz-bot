@@ -70,7 +70,7 @@ ORDER BY m.position, t.position
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute('SET search_path TO musicbrainz')
+db.execute("SET search_path TO musicbrainz, %s" % cfg.BOT_SCHEMA_DB)
 
 def similarity(a, b):
     return int(similarity2(to_unicode(a), to_unicode(b)) * 100)

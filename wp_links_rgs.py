@@ -15,7 +15,7 @@ import config as cfg
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute("SET search_path TO musicbrainz")
+db.execute("SET search_path TO musicbrainz, %s" % cfg.BOT_SCHEMA_DB)
 
 wp_lang = sys.argv[1] if len(sys.argv) > 1 else 'en'
 
