@@ -2,13 +2,14 @@
 import re
 import urllib
 import urllib2
+
 import mechanize
 import sqlalchemy
 from musicbrainz2.webservice import WebService, Query, WebServiceError, ReleaseIncludes
+
 from editing import MusicBrainzClient
 from utils import out
 import config as cfg
-
 
 '''
 CREATE TABLE bot_isrc_zeroinch_submitted (

@@ -5,9 +5,11 @@ import socket
 import datetime
 from collections import defaultdict
 from optparse import OptionParser
+
 import sqlalchemy
 import Levenshtein
 import amazonproduct
+
 from editing import MusicBrainzClient
 import config as cfg
 from utils import out
