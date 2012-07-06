@@ -209,11 +209,11 @@ def amazon_get_asin(barcode, country, date):
         attrs = item.ItemAttributes
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
             continue
-        asin_barcode = None
+        asin_barcode = ''
         if 'EAN' in attrs.__dict__:
-            asin_barcode = attrs.EAN
+            asin_barcode = str(attrs.EAN)
         elif 'UPC' in attrs.__dict__:
-            asin_barcode = attrs.UPC
+            asin_barcode = str(attrs.UPC)
         if barcode.lstrip('0') != asin_barcode.lstrip('0'):
             continue
         items.append(item)
