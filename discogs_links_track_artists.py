@@ -33,7 +33,8 @@ engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz')
 
-mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
+mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
 
 discogs.user_agent = 'MusicBrainzDiscogsReleaseGroupsBot/0.1 +https://github.com/weisslj/musicbrainz-bot'
 
@@ -152,6 +153,7 @@ discogs_artist_set = set((gid, url) for gid, url in db.execute('''SELECT gid, ur
 discogs_artist_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_artist_problematic'''))
 
 def main(verbose=False):
+    edits_left = mb.edits_left()
     d = defaultdict(dict)
     
     for r, r_gid, t_name, t_pos, m_pos, url, a, a_gid, ac in db.execute(query_missing):
@@ -161,6 +163,8 @@ def main(verbose=False):
     
     count = len(d)
     for i, k in enumerate(d):
+        if edits_left <= 0:
+            break
         if len(d[k]) != 1:
             continue
         r1 = list(d[k])[0]
@@ -237,6 +241,7 @@ def main(verbose=False):
             out(u'http://musicbrainz.org/artist/%s  ->  %s' % (a_gid,discogs_url))
             mb.add_url('artist', a_gid, 180, discogs_url.encode('utf-8'), text)
             db.execute("INSERT INTO bot_discogs_artist_set (gid,url) VALUES (%s,%s)", (a_gid, discogs_url))
+            edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
 
