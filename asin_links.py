@@ -6,9 +6,11 @@ import socket
 import datetime
 from collections import defaultdict
 from optparse import OptionParser
+
 import sqlalchemy
 import Levenshtein
 import amazonproduct
+
 from editing import MusicBrainzClient
 import config as cfg
 from utils import out, colored_out, bcolors
@@ -208,6 +210,13 @@ def amazon_get_asin(barcode, country, date):
         attrs = item.ItemAttributes
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
             continue
+        asin_barcode = ''
+        if 'EAN' in attrs.__dict__:
+            asin_barcode = str(attrs.EAN)
+        elif 'UPC' in attrs.__dict__:
+            asin_barcode = str(attrs.UPC)
+        if barcode.lstrip('0') != asin_barcode.lstrip('0'):
+            continue
         items.append(item)
     items.sort(key=gen_item_date_sort_key(date))
     return items[0] if items else None
@@ -374,6 +383,7 @@ def main(verbose=False):
             colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
             mb.add_url('release', gid, 77, url, text)
             db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
+            asins.add(url)
             edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)

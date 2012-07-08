@@ -7,7 +7,9 @@ import pprint
 import itertools
 import operator
 import urllib2
+
 import sqlalchemy
+
 from editing import MusicBrainzClient
 import utils
 from utils import out
