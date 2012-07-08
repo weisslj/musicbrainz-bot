@@ -8,3 +8,7 @@ BOT_SCHEMA_DB = 'mbbot'
 WWW_USER_AGENT = None
 
 TMP_DIR = '/tmp'
+
+AWS_KEY = '...'
+AWS_SECRET_KEY = '...'
+AWS_ASSOCIATE_TAG = '...'
