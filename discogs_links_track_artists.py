@@ -4,6 +4,7 @@ from collections import defaultdict
 import urllib
 import urllib2
 import socket
+from optparse import OptionParser
 
 import sqlalchemy
 import Levenshtein
@@ -12,6 +13,7 @@ import discogs_client as discogs
 from editing import MusicBrainzClient
 from utils import out
 import config as cfg
+from mbbot.utils.pidfile import PIDFile
 
 '''
 CREATE TABLE bot_discogs_artist_set (
