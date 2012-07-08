@@ -3,9 +3,11 @@ import re
 import urllib2
 import socket
 from optparse import OptionParser
+
 import sqlalchemy
 import Levenshtein
 import discogs_client as discogs
+
 from editing import MusicBrainzClient
 import config as cfg
 from utils import out

@@ -162,6 +162,9 @@ class MusicBrainzClient(object):
         if "Thank you, your edit has been" not in page:
             if "already exists" not in page:
                 raise Exception('unable to post edit')
+            else:
+                return False
+        return True
 
     def edit_artist(self, artist, update, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (artist['gid'],)))
@@ -212,6 +215,9 @@ class MusicBrainzClient(object):
         if "Thank you, your edit has been" not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
+            else:
+                return False
+        return True
 
     def set_artist_type(self, entity_id, type_id, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (entity_id,)))
@@ -228,6 +234,9 @@ class MusicBrainzClient(object):
         if "Thank you, your edit has been" not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
+            else:
+                return False
+        return True
 
     def edit_url(self, entity_id, old_url, new_url, edit_note, auto=False):
         self.b.open(self.url("/url/%s/edit" % (entity_id,)))
@@ -247,6 +256,9 @@ class MusicBrainzClient(object):
         if "Thank you, your edit has been" not in page:
             if "any changes to the data already present" not in page:
                 raise Exception('unable to post edit')
+            else:
+                return False
+        return True
 
     def edit_relationship(self, rel_id, entity0_type, entity1_type, old_link_type_id, new_link_type_id, attributes, begin_date, end_date, edit_note, auto=False):
         self.b.open(self.url("/edit/relationship/edit", id=str(rel_id), type0=entity0_type, type1=entity1_type))
@@ -272,6 +284,9 @@ class MusicBrainzClient(object):
         if "Thank you, your edit has been" not in page:
             if "exists with these attributes" not in page:
                 raise Exception('unable to post edit')
+            else:
+                return False
+        return True
 
     def remove_relationship(self, rel_id, entity0_type, entity1_type, edit_note):
         self.b.open(self.url("/edit/relationship/delete", id=str(rel_id), type0=entity0_type, type1=entity1_type))
