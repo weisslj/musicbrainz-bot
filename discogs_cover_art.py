@@ -96,7 +96,9 @@ WITH
             /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
             AND (rs.name IN ('Promotion','Bootleg')
                 OR date_year < 1980
-                OR (r.barcode IS NOT NULL AND amz_url.url IS NOT NULL)
+                OR r.barcode = ""
+                /* if barcode exists, either we have ASIN or release has not been updated since a few days (to be sure asin_links scripts has run on it) */
+                OR (r.barcode IS NOT NULL AND (amz_url.url IS NOT NULL OR r.last_updated < now() - INTERVAL '5 DAY'))
                 OR encycl_link.url IS NOT NULL
                 """ + ("OR TRUE" if mbid else "") + """
             )
