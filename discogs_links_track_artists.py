@@ -155,12 +155,12 @@ discogs_artist_problematic = set(gid for gid, in db.execute('''SELECT gid FROM b
 def main(verbose=False):
     edits_left = mb.edits_left()
     d = defaultdict(dict)
-    
+
     for r, r_gid, t_name, t_pos, m_pos, url, a, a_gid, ac in db.execute(query_missing):
         if a_gid in discogs_artist_problematic:
             continue
         d[a][r] = (r, r_gid, t_name, t_pos, m_pos, url, a, a_gid, ac)
-    
+
     count = len(d)
     for i, k in enumerate(d):
         if edits_left <= 0:
