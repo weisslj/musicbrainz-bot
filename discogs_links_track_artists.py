@@ -157,7 +157,12 @@ def main(verbose=False):
             out('http://musicbrainz.org/release/%s (%d-%d)' % (r_gid, m_pos, t_pos))
             out('%s' % url)
             out('http://musicbrainz.org/artist/%s' % a_gid)
-        discogs_release_id = int(re.match(r'^http://www\.discogs\.com/release/([0-9]+)', url).group(1))
+        m = re.match(r'^http://www\.discogs\.com/release/([0-9]+)', url)
+        if not m:
+            if verbose:
+                out('skip, is no valid Discogs release URL')
+            continue
+        discogs_release_id = int(m.group(1))
         discogs_release = discogs.Release(discogs_release_id)
         t_index = 0
         discogs_track = None
