@@ -10,7 +10,7 @@ import discogs_client as discogs
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out
+from utils import out, asciipunct
 from mbbot.utils.pidfile import PIDFile
 
 '''
@@ -78,30 +78,6 @@ WHERE release.release_group = %s AND l.link_type = 76
 discogs_release_group_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_discogs_release_group_set'''))
 discogs_release_group_missing = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_release_group_missing'''))
 discogs_release_group_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_release_group_problematic'''))
-
-def asciipunct(s):
-    mapping = {
-        u"…": u"...",
-        u"‘": u"'",
-        u"’": u"'",
-        u"‚": u"'",
-        u"“": u"\"",
-        u"”": u"\"",
-        u"„": u"\"",
-        u"′": u"'",
-        u"″": u"\"",
-        u"‹": u"<",
-        u"›": u">",
-        u"‐": u"-",
-        u"‒": u"-",
-        u"–": u"-",
-        u"−": u"-",
-        u"—": u"-",
-        u"―": u"-",
-    }
-    for orig, repl in mapping.iteritems():
-        s = s.replace(orig, repl)
-    return s
 
 def are_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))

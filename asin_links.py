@@ -12,7 +12,7 @@ import amazonproduct
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out
+from utils import out, asciipunct
 from mbbot.utils.pidfile import PIDFile
 
 '''
@@ -125,30 +125,6 @@ asins = set(amazon_url_asin(url) for url, in db.execute("""SELECT url.url FROM u
 barcodes_hist = defaultdict(int)
 for barcode, in db.execute("""SELECT DISTINCT barcode FROM release WHERE barcode IS NOT NULL AND barcode != ''"""):
     barcodes_hist[barcode.lstrip('0')] += 1
-
-def asciipunct(s):
-    mapping = {
-        u"…": u"...",
-        u"‘": u"'",
-        u"’": u"'",
-        u"‚": u"'",
-        u"“": u"\"",
-        u"”": u"\"",
-        u"„": u"\"",
-        u"′": u"'",
-        u"″": u"\"",
-        u"‹": u"<",
-        u"›": u">",
-        u"‐": u"-",
-        u"‒": u"-",
-        u"–": u"-",
-        u"−": u"-",
-        u"—": u"-",
-        u"―": u"-",
-    }
-    for orig, repl in mapping.iteritems():
-        s = s.replace(orig, repl)
-    return s
 
 def are_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))

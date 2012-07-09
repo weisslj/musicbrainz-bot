@@ -11,7 +11,7 @@ import Levenshtein
 import discogs_client as discogs
 
 from editing import MusicBrainzClient
-from utils import out
+from utils import out, asciipunct
 import config as cfg
 from mbbot.utils.pidfile import PIDFile
 
@@ -72,30 +72,6 @@ WHERE url.url IN (
     WHERE l.link_type = 180
 )
 '''
-
-def asciipunct(s):
-    mapping = {
-        u"…": u"...",
-        u"‘": u"'",
-        u"’": u"'",
-        u"‚": u"'",
-        u"“": u"\"",
-        u"”": u"\"",
-        u"„": u"\"",
-        u"′": u"'",
-        u"″": u"\"",
-        u"‹": u"<",
-        u"›": u">",
-        u"‐": u"-",
-        u"‒": u"-",
-        u"–": u"-",
-        u"−": u"-",
-        u"—": u"-",
-        u"―": u"-",
-    }
-    for orig, repl in mapping.iteritems():
-        s = s.replace(orig, repl)
-    return s
 
 def are_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))
