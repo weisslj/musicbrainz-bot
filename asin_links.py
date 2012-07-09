@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 import re
 import urllib2
@@ -12,7 +13,7 @@ import amazonproduct
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out, asciipunct
+from utils import out, asciipunct, colored_out, bcolors
 from mbbot.utils.pidfile import PIDFile
 
 '''
@@ -46,7 +47,7 @@ CREATE TABLE bot_asin_catmismatch (
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute('SET search_path TO musicbrainz')
+db.execute("SET search_path TO musicbrainz, mbbot")
 
 editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
@@ -174,7 +175,7 @@ def amazon_get_asin(barcode, country, date):
     items = []
     for loc in store_map_rev[country]:
         if loc not in amazon_api:
-            amazon_api[loc] = amazonproduct.API(locale=loc)
+            amazon_api[loc] = amazonproduct.API(cfg.AWS_KEY, cfg.AWS_SECRET_KEY, loc, cfg.AWS_ASSOCIATE_TAG)
         try:
             root = amazon_api[loc].item_lookup(barcode, **params)
         except amazonproduct.errors.InvalidParameterValue, e:
@@ -260,12 +261,11 @@ def main(verbose=False):
             continue
         if barcode.lstrip('0') in barcodes_hist and barcodes_hist[barcode.lstrip('0')] > 1:
             if verbose:
-                out('  two releases with same barcode, skip for now')
+                colored_out(bcolors.WARNING, '  two releases with same barcode, skip for now')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         if verbose:
-            out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
-            out(u'%s http://musicbrainz.org/release/%s %s %s' % (name, gid, barcode, country))
+            colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
         try:
             mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
             item = amazon_get_asin(barcode, country, mb_date)
@@ -274,26 +274,26 @@ def main(verbose=False):
             continue
         if item is None:
             if verbose:
-                out('  not found, continue')
+                out(' * not found, continue')
             db.execute("INSERT INTO bot_asin_missing (gid) VALUES (%s)", gid)
             continue
         url = amazon_url_cleanup(str(item.DetailPageURL), str(item.ASIN))
         if verbose:
-            out(url)
+            out(' * barcode matches %s' % url)
         if item.ASIN in asins:
             if verbose:
-                out('  skip, ASIN already in DB')
+                out('   * skip, ASIN already in DB')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         if not 'LargeImage' in item.__dict__:
             if verbose:
-                out('  skip, has no image')
+                out('   * skip, has no image')
             db.execute("INSERT INTO bot_asin_nocover (gid) VALUES (%s)", gid)
             continue
         attrs = item.ItemAttributes
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
             if verbose:
-                out('  skip, is marked as Import')
+                out('   * skip, is marked as Import')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         amazon_name = unicode(attrs.Title)
@@ -310,19 +310,19 @@ def main(verbose=False):
                     break
             if not matched and country == 'JP':
                 if verbose:
-                    out(u'  CAT NR MISMATCH, ARGH!')
+                    colored_out(bcolors.FAIL, u' * CAT NR MISMATCH, ARGH!')
                 db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
                 continue
         if not matched:
             catnr = None
             if not are_similar(name, amazon_name):
                 if verbose:
-                    out(u'  Similarity too small: %s <-> %s' % (name, amazon_name))
+                    colored_out(bcolors.FAIL, u'   * Similarity too small: %s <-> %s' % (name, amazon_name))
                 db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
                 continue
         if (gid, url) in asin_set:
             if verbose:
-                out(u'  already linked earlier (probably got removed by some editor!')
+                colored_out(bcolors.WARNING, u' * already linked earlier (probably got removed by some editor!)')
             continue
         text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
         if catnr:
@@ -356,7 +356,7 @@ def main(verbose=False):
         re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
         text = re_bold_import.sub(ur"'''\1'''", text)
         try:
-            out(u'http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
+            colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
             mb.add_url('release', gid, 77, url, text)
             db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
             asins.add(url)

@@ -1,6 +1,11 @@
 import urllib2
+import urllib
 import re
+import json
 import datetime
+import time
+from datetime import datetime
+from kitchen.text.converters import to_bytes
 from xml.etree import ElementTree
 from BeautifulSoup import BeautifulStoneSoup
 
@@ -73,15 +78,51 @@ def itms_album_url(id):
     return 'http://itunes.apple.com/us/album/id%s' % (id,)
 
 
-rss = ElementTree.parse(open('rss.xml'))
+class ItunesSearchAPI:
 
-feed = ItunesStoreFeed(rss)
-for item in feed.items:
-    print 'Artist:', item.artist, itms_artist_url(item.artist_id)
-    print 'Album:', item.album, itms_album_url(item.album_id)
-    print 'Album type:', item.album_type
-    print 'Released:', item.release_date
-    print
+    def __init__(self):
+        self.last_request_time = datetime.min
+        self.REQUESTS_DELAY = 1.0
+        self.BASE_URL = 'http://itunes.apple.com/lookup'
 
-#urllib2.urlopen('http://itunes.apple.com/WebObjects/MZStore.woa/wpa/MRSS/newreleases/sf=143441/limit=100/explicit=true/rss.xml')
+    def _fetch_json(self, url, params):
+        self._check_rate_limit()
+        # urllib.urlencode expects str objects, not unicode
+        fixed = dict([(to_bytes(b[0]), to_bytes(b[1]))
+                      for b in params.items()])
+        request = urllib2.Request(url + '?' + urllib.urlencode(fixed))
+        request.add_header('Accept', 'application/json')
+        response = urllib2.urlopen(request)
+        data = json.loads(response.read())
+        self.last_request_time = datetime.now()
+        return data
+
+    def _check_rate_limit(self):
+        diff = datetime.now() - self.last_request_time
+        if diff.total_seconds() < self.REQUESTS_DELAY:
+            time.sleep(self.REQUESTS_DELAY - diff.total_seconds())
+
+    def lookup(self, id):
+        if not id:
+            return None
+        data = self._fetch_json(self.BASE_URL, {'id': id})
+        return data['results'][0] if len(data['results']) > 0 else None
+
+    def search(self, params):
+        data = self._fetch_json(self.BASE_URL, params)
+        return data['results']
+
+
+if __name__ == '__main__':
+    rss = ElementTree.parse(open('rss.xml'))
+
+    feed = ItunesStoreFeed(rss)
+    for item in feed.items:
+        print 'Artist:', item.artist, itms_artist_url(item.artist_id)
+        print 'Album:', item.album, itms_album_url(item.album_id)
+        print 'Album type:', item.album_type
+        print 'Released:', item.release_date
+        print
+
+    #urllib2.urlopen('http://itunes.apple.com/WebObjects/MZStore.woa/wpa/MRSS/newreleases/sf=143441/limit=100/explicit=true/rss.xml')
 

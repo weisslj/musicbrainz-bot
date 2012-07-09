@@ -13,7 +13,7 @@ import time
 from mbbot.utils.pidfile import PIDFile
 from mbbot.wp.wikipage import WikiPage
 from mbbot.wp.analysis import determine_country, determine_type, determine_gender, determine_begin_date, determine_end_date
-from utils import mangle_name, join_names, mw_remove_markup, out, colored_out, bcolors, get_page_content, extract_page_title
+from utils import mangle_name, join_names, out, colored_out, bcolors
 import config as cfg
 
 wp_lang = sys.argv[1] if len(sys.argv) > 1 else 'en'
@@ -22,7 +22,7 @@ CHECK_PERFORMANCE_NAME = False
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute("SET search_path TO musicbrainz")
+db.execute("SET search_path TO musicbrainz, %s" % cfg.BOT_SCHEMA_DB)
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
@@ -30,12 +30,14 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 CREATE TABLE bot_wp_artist_data (
     gid uuid NOT NULL,
     lang character varying(2),
-    processed timestamp with time zone DEFAULT now()
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_wp_artist_data_pkey PRIMARY KEY (gid, lang)
 );
 
-ALTER TABLE ONLY bot_wp_artist_data
-    ADD CONSTRAINT bot_wp_artist_data_pkey PRIMARY KEY (gid, lang);
-
+CREATE TABLE bot_wp_artist_data_ignore (
+    gid uuid NOT NULL,
+    CONSTRAINT bot_wp_artist_data_ignore_pkey PRIMARY KEY (gid)
+);
 """
 
 query = """
@@ -47,23 +49,25 @@ SELECT DISTINCT
     a.end_date_year,
     a.end_date_month,
     a.end_date_day,
-    u.url
+    u.url,
+    b.processed
 FROM s_artist a
 JOIN l_artist_url l ON l.entity0 = a.id AND l.link IN (SELECT id FROM link WHERE link_type = 179)
 JOIN url u ON u.id = l.entity1
 LEFT JOIN bot_wp_artist_data b ON a.gid = b.gid
+LEFT JOIN bot_wp_artist_data_ignore bi ON a.gid = bi.gid
 WHERE
-    b.gid IS NULL AND
+    bi.gid IS NULL AND
     (
         a.country IS NULL OR
         a.type IS NULL OR
-        ((a.type IS NULL OR a.type = 1) AND (a.begin_date_year IS NULL OR a.gender IS NULL)) OR
+        ((a.type IS NULL OR a.type = 1) AND (a.begin_date_year IS NULL OR a.end_date_year IS NULL OR a.gender IS NULL)) OR
         ((a.type IS NULL OR a.type = 2) AND (a.begin_date_year IS NULL))
     ) AND
     l.edits_pending = 0 AND
     u.url LIKE 'http://"""+wp_lang+""".wikipedia.org/wiki/%%'
-ORDER BY a.id
-LIMIT 50
+ORDER BY b.processed NULLS FIRST, a.id
+LIMIT 750
 """
 
 performance_name_query = """
@@ -97,7 +101,7 @@ def main():
         update = set()
         reasons = []
 
-        page = WikiPage.fetch(artist['url'])
+        page = WikiPage.fetch(artist['url'], False)
 
         if not artist['country']:
             country, country_reasons = determine_country(page)
@@ -155,8 +159,10 @@ def main():
             time.sleep(10)
             mb.edit_artist(artist, update, edit_note)
 
-        db.execute("INSERT INTO bot_wp_artist_data (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
-        out()
+        if artist['processed'] is None:
+            db.execute("INSERT INTO bot_wp_artist_data (gid, lang) VALUES (%s, %s)", (artist['gid'], wp_lang))
+        else:
+            db.execute("UPDATE bot_wp_artist_data SET processed = now() WHERE (gid, lang) = (%s, %s)", (artist['gid'], wp_lang))
 
 if __name__ == '__main__':
     with PIDFile('/tmp/mbbot_wp_artist_country.pid'):

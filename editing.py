@@ -1,7 +1,18 @@
 import mechanize
 import urllib
+import urllib2
 import time
 import re
+import os
+import random
+import string
+import json
+import config as cfg
+import hashlib
+import base64
+import socket
+from PIL import Image
+from utils import structureToString, out
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
@@ -331,13 +342,12 @@ class MusicBrainzClient(object):
         if "Release information" not in page:
             raise Exception('unable to post edit')
 
-    def set_release_script(self, entity_id, old_script_id, new_script_id, edit_note, auto=False):
-        self._edit_release_information(entity_id, {"script_id": [[str(old_script_id)],[str(new_script_id)]]}, edit_note, auto)
-
-    def set_release_language(self, entity_id, old_language_id, new_language_id, edit_note, auto=False):
-        self._edit_release_information(entity_id, {"language_id": [[str(old_language_id)],[str(new_language_id)]]}, edit_note, auto)
-
-    def set_release_medium_format(self, entity_id, old_format_id, new_format_id, edit_note, auto=False):
+    def edit_release_tracklisting(self, entity_id, mediums, edit_note=u'', auto=False):
+        """
+        Edit a release tracklisting. Doesn't handle adding/deleting tracks.
+        Each medium object may contain the following properties: position, format, name, tracklist.
+        Each track object may contain the following properties: position, name, length, number, artist_credit.
+        """
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
 
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
@@ -345,7 +355,68 @@ class MusicBrainzClient(object):
         self.b.submit(name="step_tracklist")
 
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
-        attributes = {"mediums.0.format_id": [[str(old_format_id)], [str(new_format_id)]]}
+        for medium_no, medium in enumerate(mediums):
+            if 'position' in medium:
+                self.b["mediums.%s.position" % medium_no] = medium['position']
+            if 'name' in medium:
+                self.b["mediums.%s.name" % medium_no] = medium['name']
+            if 'format_id' in medium:
+                self.b["mediums.%s.format_id" % medium_no] = medium['format_id']
+
+            if 'tracklist' in medium:
+                tracklist_id = self.b["mediums.%s.tracklist_id" % medium_no]
+                data = urllib2.urlopen('http://musicbrainz.org/ws/js/tracklist/%s' % tracklist_id)
+                old_tracklist = json.load(data)
+
+                edited_tracklist = []
+                for trackno, old_track in enumerate(old_tracklist['tracks']):
+                    new_track = medium['tracklist'][trackno]# if medium['tracklist'][trackno] is not None else {}
+                    name = new_track['name'] if 'name' in new_track else old_track['name']
+                    to = {
+                        'name': name,
+                        'length': new_track['length'] if 'length' in new_track else old_track['length'],
+                        'artist_credit': new_track['artist_credit'] if 'artist_credit' in new_track else old_track['artist_credit']
+                    }
+                    to['edit_sha1'] = base64.b64encode( hashlib.sha1(structureToString(to)).digest() )
+                    to['position'] = trackno
+                    to['deleted'] = 0
+                    to['number'] = new_track['number'] if 'number' in new_track else old_track['number']
+
+                    edited_tracklist.append(to)
+
+                self.b["mediums.%s.edits" % medium_no] = json.dumps(edited_tracklist)
+
+        self.b.submit(name="step_editnote")
+        page = self.b.response().read()
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        try:
+            self.b["edit_note"] = edit_note.encode('utf8')
+        except mechanize.ControlNotFoundError:
+            raise Exception('unable to post edit')
+        try: self.b["as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
+        self.b.submit(name="save")
+        page = self.b.response().read()
+        if "Release information" not in page:
+            raise Exception('unable to post edit')
+
+    def set_release_script(self, entity_id, old_script_id, new_script_id, edit_note, auto=False):
+        self._edit_release_information(entity_id, {"script_id": [[str(old_script_id)],[str(new_script_id)]]}, edit_note, auto)
+
+    def set_release_language(self, entity_id, old_language_id, new_language_id, edit_note, auto=False):
+        self._edit_release_information(entity_id, {"language_id": [[str(old_language_id)],[str(new_language_id)]]}, edit_note, auto)
+
+    def set_release_medium_format(self, entity_id, medium_number, old_format_id, new_format_id, edit_note, auto=False):
+        self.b.open(self.url("/release/%s/edit" % (entity_id,)))
+
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self.b["barcode_confirm"] = ["1"]
+        self.b.submit(name="step_tracklist")
+
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        attributes = {
+            "mediums.%s.format_id" % (medium_number-1): [[str(old_format_id) if old_format_id is not None else ''], [str(new_format_id)]]
+        }
         changed = False
         for k, v in attributes.items():
             if self.b[k] != v[0]:
@@ -358,14 +429,19 @@ class MusicBrainzClient(object):
             print " * already set, not changing"
             return
         self.b.submit(name="step_editnote")
+
         page = self.b.response().read()
+        if "This medium already has disc ID" in page:
+            print " * has a discid => medium format can't be set to a format that can't have disc IDs"
+            return
+
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
         try:
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
             raise Exception('unable to post edit')
-        #try: self.b["as_auto_editor"] = ["1"] if auto else []
-        #except mechanize.ControlNotFoundError: pass
+        try: self.b["as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
         self.b.submit(name="save")
         page = self.b.response().read()
         if "Release information" not in page:
@@ -396,3 +472,80 @@ class MusicBrainzClient(object):
         if edit_note:
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
+
+    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False, convertToJPEG=False):
+
+        # download image if it's remotely hosted
+        image_is_remote = True if image.startswith(('http://', 'https://', 'ftp://')) else False
+        if image_is_remote:
+            u = urllib2.urlopen(image)
+            f,ext = os.path.splitext(image)
+            localFile = '%s/%s%s' % (cfg.TMP_DIR, ''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(8)), ext)
+            tmpfile = open(localFile, 'w')
+            tmpfile.write(u.read())
+            tmpfile.close()
+        else:
+            localFile = image
+
+        # convert image to JPEG if needed (until CAA supports other formats)
+        f, ext = os.path.splitext(localFile)
+        if convertToJPEG and not ext.lower().endswith(('jpeg', 'jpg')):
+            out(' * converting image %s to JPEG' % localFile)
+            im = Image.open(localFile)
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            outfile = f + ".jpg"
+            im.save(outfile, "JPEG")
+            if image_is_remote:
+                os.remove(localFile)
+            localFile = outfile
+
+        self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
+        page = self.b.response().read()
+
+        # upload cover art
+        self.b.follow_link(tag="iframe")
+        TRIES = 4
+        DELAY = 3
+        attempts = 0
+        while True:
+            try:
+                self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
+                self.b.add_file(open(localFile))
+                self.b.submit()
+                break
+            except (urllib2.HTTPError, urllib2.URLError):
+                if attempts < TRIES:
+                    attempts += 1
+                    self.b.back()
+                    continue
+                raise
+        page = self.b.response().read()
+        if "parent.document.getElementById" not in page:
+            raise Exception('Error uploading cover art file')
+
+        # submit the edit
+        self.b.back(2)
+        # Will probably fail. Solution is to install patched mechanize:
+        # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
+        try: self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
+        except mechanize._form.ControlNotFoundError: pass
+        submitted_types = []
+        types_control = self.b.find_control(name='add-cover-art.type_id')
+        for type in types:
+            for item in types_control.get_items():
+                if len(item.get_labels()) > 0 and item.get_labels()[0].text.lower() == type.lower():
+                    submitted_types.append(item.name)
+                    break
+        self.b['add-cover-art.type_id'] = submitted_types
+        if position:
+            self.b['add-cover-art.position'] = position
+        if comment:
+            self.b['add-cover-art.comment'] = comment.encode('utf8')
+        if edit_note:
+            self.b['add-cover-art.edit_note'] = edit_note.encode('utf8')
+        self.b.submit()
+
+        if image_is_remote:
+            os.remove(localFile)

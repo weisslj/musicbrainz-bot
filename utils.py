@@ -161,10 +161,25 @@ def extract_page_title(url, wp_lang):
         return None
     return urllib.unquote(url[len(prefix):].encode('utf8')).decode('utf8')
 
+def wp_is_canonical_page(title, page_orig):
+    page = mangle_name(page_orig)
+    if 'redirect' in page:
+        return False, "redirect page"
+    if 'disambiguation' in title or \
+        '{{disambig' in page_orig.lower() or '{{disamb' in page_orig.lower() or \
+        'disambiguationpages' in page or \
+        '{{hndis' in page_orig.lower() or \
+        '{{homonymie}}' in page:
+        return False, "disambiguation page"
+    return True, ""
+
 def quote_page_title(title):
     return urllib.quote(title.encode('utf8').replace(' ', '_'), '/$,:;@')
 
-_unaccent_dict = {u'Æ': u'AE', u'æ': u'ae', u'Œ': u'OE', u'œ': u'oe', u'ß': 'ss'}
+_unaccent_dict = {u'Æ': u'AE', u'æ': u'ae', u'Œ': u'OE', u'œ': u'oe', u'ß': 'ss',
+                u"…": u"...", u"‘": u"'", u"’": u"'", u"‚": u"'", u"“": u"\"", u"”": u"\"",
+                u"„": u"\"", u"′": u"'", u"″": u"\"", u"‹": u"<", u"›": u">", u"‐": u"-",
+                u"‒": u"-", u"–": u"-", u"−": u"-", u"—": u"-", u"―": u"-"}
 _re_latin_letter = re.compile(r"^(LATIN [A-Z]+ LETTER [A-Z]+) WITH")
 def unaccent(string):
     """Remove accents ``string``."""
@@ -183,11 +198,24 @@ def unaccent(string):
         result.append(char)
     return "".join(result)
 
+_re_duration = re.compile(r"^(\d{1,2})\:(\d{2})")
+def durationToMS(string):
+    m = _re_duration.match(string)
+    if not m:
+        return None
+    return (int(m.group(1))*60 + int(m.group(2)))*1000
+
+def msToDuration(length):
+    minutes = int( length/1000/60 ) % 60
+    seconds = int( length/1000 ) % 60
+    return "%02d:%02d" % (minutes, seconds)
+
 def escape_query(s):
     s = re.sub(r'\bOR\b', 'or', s)
     s = re.sub(r'\bAND\b', 'and', s)
     s = re.sub(r'\bNOT\b', 'not', s)
     s = re.sub(r'\+', '\\+', s)
+    s = re.sub(r'\-', '\\-', s)
     return s
 
 # from Picard 1.0
@@ -215,3 +243,23 @@ def asciipunct(string):
     for orig, repl in mapping.iteritems():
         string = string.replace(orig, repl)
     return string
+
+def structureToString(obj):
+    if obj is None:
+        return ''
+    elif isinstance (obj, (int, float)):
+        return str(obj)
+    elif isinstance (obj, (str)):
+        return obj
+    elif isinstance (obj, (unicode)):
+        obj.encode('utf8')
+    elif isinstance (obj, (list, tuple)):
+        ret = []
+        for item in obj:
+            ret.append(structureToString(item))
+        return '[' + ",".join(ret) + ']'
+    else:
+        ret = []
+        for key in sorted(obj.iterkeys()):
+            ret.append("%s:%s" % ( key, structureToString(obj[key]) ))
+        return '{' + ",".join(ret) + '}'
