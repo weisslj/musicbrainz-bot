@@ -263,3 +263,9 @@ def structureToString(obj):
         for key in sorted(obj.iterkeys()):
             ret.append("%s:%s" % ( key, structureToString(obj[key]) ))
         return '{' + ",".join(ret) + '}'
+
+def extract_mbid(url, entity):
+    m = re.search(r'/'+re.escape(entity)+'/([0-9a-f-]{36})$', url)
+    if m is None:
+        return None
+    return m.group(1)
