@@ -111,7 +111,7 @@ def musicbrainz_quote(s):
     return unicode(urllib.quote(unquote(s.encode('utf-8'), MB_ENC_NEVER), MB_UNENCODE+MB_ENC_NEVER), 'utf-8')
 
 def discogs_quote(name):
-    return unicode(urllib.quote_plus(urllib.unquote_plus(name.encode('utf-8'))), 'utf-8')
+    return unicode(urllib.quote_plus(name.encode('utf-8')), 'utf-8')
 
 def combine_names(names):
     if len(names) > 1:
