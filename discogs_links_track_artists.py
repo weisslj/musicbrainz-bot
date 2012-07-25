@@ -164,9 +164,9 @@ def main(verbose=False):
             continue
         discogs_release_id = int(m.group(1))
         discogs_release = discogs.Release(discogs_release_id)
-        if discogs_release.data['status'] == 'Draft':
+        if discogs_release.data['status'] in ['Draft', 'Rejected']:
             if verbose:
-                out('skip, release is draft')
+                out('skip, release is not draft/rejected')
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
         t_index = 0
