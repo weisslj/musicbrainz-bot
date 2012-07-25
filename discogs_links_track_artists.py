@@ -196,9 +196,9 @@ def main(verbose=False):
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
         discogs_artist = discogs_artists[0]
-        if discogs_artist.name == 'Various':
+        if discogs_artist.name in [u'Various', u'Unknown Artist']:
             if verbose:
-                out(u'not linking to Various')
+                out(u'not linking to Various or Unknown Artist')
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
         ac_name = artist_credit(ac)
