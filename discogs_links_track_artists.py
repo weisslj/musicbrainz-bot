@@ -14,6 +14,7 @@ from editing import MusicBrainzClient
 from utils import out, asciipunct
 import config as cfg
 from mbbot.utils.pidfile import PIDFile
+import blacklist
 
 '''
 CREATE TABLE bot_discogs_artist_set (
@@ -125,7 +126,10 @@ def artist_credit(ac):
 def discogs_artist_url(name):
     return u'http://www.discogs.com/artist/%s' % musicbrainz_quote(discogs_quote(name))
 
+bot_blacklist = blacklist.discogs_links('artist')
+bot_blacklist_new = set()
 discogs_artist_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_discogs_artist_set'''))
+discogs_artist_set |= bot_blacklist
 discogs_artist_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_artist_problematic'''))
 
 def main(verbose=False):
@@ -218,6 +222,8 @@ def main(verbose=False):
         if (a_gid, discogs_url) in discogs_artist_set:
             if verbose:
                 out(u'  already linked earlier (probably got removed by some editor!')
+            if (a_gid, discogs_url) not in bot_blacklist:
+                bot_blacklist_new.add((a_gid, discogs_url))
             continue
         text = u'Artist appears on only one release [1] (medium %d, track %d), which is linked to discogs release [2]. Also, the track names are similar:\n' % (m_pos, t_pos)
         text += u'Discogs: “%s” by %s\n' % (discogs_track['title'], combine_names([x.name for x in discogs_artists]))
@@ -230,6 +236,8 @@ def main(verbose=False):
             edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
+    if bot_blacklist_new:
+        out(blacklist.wiki_markup(bot_blacklist_new, 'artist', db))
 
 if __name__ == '__main__':
     parser = OptionParser()

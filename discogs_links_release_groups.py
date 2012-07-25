@@ -12,6 +12,7 @@ from editing import MusicBrainzClient
 import config as cfg
 from utils import out, asciipunct
 from mbbot.utils.pidfile import PIDFile
+import blacklist
 
 '''
 CREATE TABLE bot_discogs_release_group_set (
@@ -75,7 +76,10 @@ JOIN url ON url.id = l_ru.entity1
 WHERE release.release_group = %s AND l.link_type = 76
 '''
 
+bot_blacklist = blacklist.discogs_links('release-group')
+bot_blacklist_new = set()
 discogs_release_group_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_discogs_release_group_set'''))
+discogs_release_group_set |= bot_blacklist
 discogs_release_group_missing = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_release_group_missing'''))
 discogs_release_group_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_release_group_problematic'''))
 
@@ -140,6 +144,8 @@ def main(verbose=False):
         if (gid, master_url) in discogs_release_group_set:
             if verbose:
                 out(u'  already linked earlier (probably got removed by some editor!')
+            if (gid, master_url) not in bot_blacklist:
+                bot_blacklist_new.add((gid, master_url))
             continue
         if len(urls) >= 2:
             text = u'There are %d distinct Discogs links in this release group, and all point to this master URL.\n' % len(urls)
@@ -152,6 +158,8 @@ def main(verbose=False):
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
+    if bot_blacklist_new:
+        out(blacklist.wiki_markup(bot_blacklist_new, 'release-group', db))
 
 if __name__ == '__main__':
     parser = OptionParser()
