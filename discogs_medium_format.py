@@ -72,11 +72,11 @@ def discogs_get_format(release_url):
 
             if ('descriptions' not in format):
                 continue
-            if (format['name'] == 'Vinyl') and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
+            if (format['name'] in ('Vinyl', 'Shellac')) and ('12"' in format['descriptions'] or 'LP' in format['descriptions']):
                 return '12"'
-            if (format['name'] == 'Vinyl') and ('7"' in format['descriptions']):
+            if (format['name'] in ('Vinyl', 'Shellac')) and ('7"' in format['descriptions']):
                 return '7"'
-            if (format['name'] == 'Vinyl') and ('10"' in format['descriptions']):
+            if (format['name'] in ('Vinyl', 'Shellac')) and ('10"' in format['descriptions']):
                 return '10"'
     return None
 
@@ -99,7 +99,6 @@ for release in db.execute(query):
         edit_note = 'Setting medium format from attached Discogs link (%s)' % release['discogs_url']
         out(' * edit note: %s' % (edit_note,))
         mb.set_release_medium_format(release['gid'], release['position'], release['format'], DISCOGS_MB_FORMATS_MAPPING[discogs_format], edit_note, True)
-        time.sleep(5)
     else:
         colored_out(bcolors.FAIL, ' * using %s, no matching format has been found' % (release['discogs_url'],))
 
