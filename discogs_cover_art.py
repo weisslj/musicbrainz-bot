@@ -72,38 +72,42 @@ WITH
                 JOIN url encycl_url ON encycl_url.id = encycl_link.entity1 AND encycl_url.url ~ 'encyclopedisque.fr/images/'
                 WHERE encycl_link.link IN (SELECT id FROM link WHERE link_type = 78) AND encycl_link.edits_pending = 0
             ) encycl_link ON encycl_link.entity0 = r.id
-        WHERE """ + filter_clause + """
-            /* Artist is either French or Various Artists. Pick only French Various Artists releases */
-            AND EXISTS (SELECT 1
-                FROM artist_credit_name acn
-                JOIN artist a ON acn.artist = a.id
-                JOIN country c ON a.country = c.id
-                WHERE r.artist_credit = acn.artist_credit
-                    AND (c.iso_code = 'FR' OR a.id = 1) AND (a.id <> 1 OR rc.iso_code = 'FR')
-            )
-            /* Discogs link should only be linked to this release */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = discogs_url.id AND l.entity0 <> r.id)
-            /* this release should not have another Discogs link attached */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> discogs_url.id
+        WHERE
+            /* This release should not have another Discogs link attached */
+            NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> discogs_url.id
                                 AND l.link IN (SELECT id FROM link WHERE link_type = 76))
-            /* Amazon link should only be linked to this release */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = amz_url.id AND l.entity0 <> r.id)
-            /* this release should not have another Amazon link attached */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> amz_url.id
-                                AND l.link IN (SELECT id FROM link WHERE link_type = 77))
-            /* Encylopedisque link should only be linked to this release */
-            AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = encycl_link.entity1 AND l.entity0 <> r.id)
-            /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
-            AND (rs.name IN ('Promotion','Bootleg')
-                OR date_year < 1980
-                OR r.barcode = ""
-                /* if barcode exists, either we have ASIN or release has not been updated since a few days (to be sure asin_links scripts has run on it) */
-                OR (r.barcode IS NOT NULL AND (amz_url.url IS NOT NULL OR r.last_updated < now() - INTERVAL '5 DAY'))
-                OR encycl_link.url IS NOT NULL
-                """ + ("OR TRUE" if mbid else "") + """
-            )
-            /* Discogs URL required, unless an explicit MBID is provided */
-            AND (discogs_url.url IS NOT NULL """ + ("OR TRUE" if mbid else "") + """)
+            /* Real filter: specified MBID or release with no cover art */
+            AND """ + filter_clause + """
+            /* Optional checks unless MBID is specified */
+            AND (""" + ("TRUE OR " if mbid else "") + """(
+                /* Artist is either French or Various Artists. Pick only French Various Artists releases */
+                EXISTS (SELECT 1
+                    FROM artist_credit_name acn
+                    JOIN artist a ON acn.artist = a.id
+                    JOIN country c ON a.country = c.id
+                    WHERE r.artist_credit = acn.artist_credit
+                        AND (c.iso_code = 'FR' OR a.id = 1) AND (a.id <> 1 OR rc.iso_code = 'FR')
+                )
+                /* Discogs link should only be linked to this release */
+                AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = discogs_url.id AND l.entity0 <> r.id)
+                /* Amazon link should only be linked to this release */
+                AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = amz_url.id AND l.entity0 <> r.id)
+                /* this release should not have another Amazon link attached */
+                AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity0 = r.id AND l.entity1 <> amz_url.id
+                                    AND l.link IN (SELECT id FROM link WHERE link_type = 77))
+                /* Encylopedisque link should only be linked to this release */
+                AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = encycl_link.entity1 AND l.entity0 <> r.id)
+                /* Discogs URL required*/
+                AND discogs_url.url IS NOT NULL
+                /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
+                AND (rs.name IN ('Promotion','Bootleg')
+                    OR date_year < 1980
+                    OR r.barcode = ''
+                    /* if barcode exists, either we have ASIN or release has not been updated since a few days (to be sure asin_links scripts has run on it) */
+                    OR (r.barcode IS NOT NULL AND (amz_url.url IS NOT NULL OR r.last_updated < now() - INTERVAL '5 DAY'))
+                    OR encycl_link.url IS NOT NULL
+                )
+            ))
     )
 SELECT r.id, r.gid, r.name, tr.discogs_url, tr.amz_url, ac.name AS artist, r.barcode, b.processed
 FROM releases_wo_coverart tr
@@ -190,7 +194,6 @@ def submit_cover_art(release, url, types, editnote=u''):
     else:
         colored_out(bcolors.OKGREEN, " * Adding " + ",".join(types) + (" " if len(types)>0 else "") + "cover art '%s'" % (url,))
         time.sleep(5)
-        #mb.add_cover_art(release, url, types)
         mb.add_cover_art(release, url, types, None, u'', editnote, False, True)
         save_processed(release, url)
 
@@ -237,7 +240,7 @@ for release in db.execute(query):
                 im = Image.open(StringIO(img_file.read()))
                 spotify_score = im.size[0] * im.size[1]
                 colored_out(bcolors.NONE, ' * Spotify score:\t%s \t %s' % (spotify_score, image_url))
-                if spotify_score >= best_score:
+                if spotify_score > best_score:
                     front_uri = image_url
                     best_score = spotify_score
                     editnote = u'TQ'
@@ -252,7 +255,7 @@ for release in db.execute(query):
             im = Image.open(StringIO(img_file.read()))
             itunes_score = im.size[0] * im.size[1]
             colored_out(bcolors.NONE, ' * iTunes score:\t%s \t %s' % (itunes_score, image_url))
-            if itunes_score >= best_score:
+            if itunes_score > best_score:
                 front_uri = image_url
                 best_score = itunes_score
                 editnote = u'JU'
