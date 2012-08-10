@@ -37,7 +37,8 @@ engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz')
 
-mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
+mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
 
 discogs.user_agent = 'MusicBrainzDiscogsReleaseGroupsBot/0.1 +https://github.com/weisslj/musicbrainz-bot'
 
@@ -105,9 +106,12 @@ def discogs_get_master(release_urls):
                 yield (master.title, master._id, discogs_artists_str(master.artists))
 
 def main(verbose=False):
+    normal_edits_left, edits_left = mb.edits_left()
     rgs = [(rg, gid, name) for rg, gid, name in db.execute(query_rg_without_master)]
     count = len(rgs)
     for i, (rg, gid, name) in enumerate(rgs):
+        if edits_left <= 0:
+            break
         if gid in discogs_release_group_missing or gid in discogs_release_group_problematic:
             continue
         urls = set(url for url, in db.execute(query_rg_release_discogs, rg))
@@ -152,10 +156,16 @@ def main(verbose=False):
         else:
             text = u'There is one Discogs link in this release group, and it points to this master URL.\n%s\n' % list(urls)[0]
         text += u'Also, the name of the Discogs master “%s” (by %s) is similar to the release group name.' % (master_name, master_artists)
+        enable_auto = len(urls) >= 2
+        if not enable_auto and normal_edits_left <= 0:
+            continue
         try:
             out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid,master_url))
-            mb.add_url('release_group', gid, 90, master_url, text, auto=(len(urls)>=2))
+            mb.add_url('release_group', gid, 90, master_url, text, auto=enable_auto)
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
+            edits_left -= 1
+            if not enable_auto:
+                normal_edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
     if bot_blacklist_new:

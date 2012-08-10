@@ -133,7 +133,7 @@ discogs_artist_set |= bot_blacklist
 discogs_artist_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_artist_problematic'''))
 
 def main(verbose=False):
-    edits_left = mb.edits_left()
+    normal_edits_left, edits_left = mb.edits_left()
     d = defaultdict(dict)
 
     for r, r_gid, t_name, t_pos, m_pos, url, a, a_gid, ac in db.execute(query_missing):
@@ -143,7 +143,7 @@ def main(verbose=False):
 
     count = len(d)
     for i, k in enumerate(d):
-        if edits_left <= 0:
+        if normal_edits_left <= 0:
             break
         if len(d[k]) != 1:
             continue
@@ -233,7 +233,7 @@ def main(verbose=False):
             out(u'http://musicbrainz.org/artist/%s  ->  %s' % (a_gid,discogs_url))
             mb.add_url('artist', a_gid, 180, discogs_url.encode('utf-8'), text)
             db.execute("INSERT INTO bot_discogs_artist_set (gid,url) VALUES (%s,%s)", (a_gid, discogs_url))
-            edits_left -= 1
+            normal_edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
     if bot_blacklist_new:
