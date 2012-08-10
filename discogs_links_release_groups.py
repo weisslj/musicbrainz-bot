@@ -156,16 +156,11 @@ def main(verbose=False):
         else:
             text = u'There is one Discogs link in this release group, and it points to this master URL.\n%s\n' % list(urls)[0]
         text += u'Also, the name of the Discogs master “%s” (by %s) is similar to the release group name.' % (master_name, master_artists)
-        enable_auto = len(urls) >= 2
-        if not enable_auto and normal_edits_left <= 0:
-            continue
         try:
             out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid,master_url))
-            mb.add_url('release_group', gid, 90, master_url, text, auto=enable_auto)
+            mb.add_url('release_group', gid, 90, master_url, text, auto=True)
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
             edits_left -= 1
-            if not enable_auto:
-                normal_edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
     if bot_blacklist_new:
