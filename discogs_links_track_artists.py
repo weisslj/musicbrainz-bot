@@ -74,11 +74,16 @@ WHERE url.url IN (
 )
 '''
 
-def are_similar(name1, name2):
+def are_tracks_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))
     ratio = Levenshtein.jaro_winkler(name1, name2)
     return ratio >= 0.8 or name1 in name2 or name2 in name1
 
+# is stricter, because we don't want to match e.g. "A" with "A feat. B"
+def are_artists_similar(name1, name2):
+    name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))
+    ratio = Levenshtein.jaro_winkler(name1, name2, 0.0) # no common prefix length
+    return ratio >= 0.8
 
 MB_ENC_ALWAYS = '"<>\\^`{|} '
 MB_UNENCODE = "!'()*~"
@@ -194,7 +199,7 @@ def main(verbose=False):
                 out('skip, %d track artists' % len(discogs_artists))
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
-        if not are_similar(discogs_track['title'], t_name):
+        if not are_tracks_similar(discogs_track['title'], t_name):
             if verbose:
                 out(u'not similar: %s <-> %s' % (discogs_track['title'], t_name))
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
@@ -213,7 +218,7 @@ def main(verbose=False):
         m = re.match(r'(.*?), (The)', norm_name)
         if m:
             norm_name = '%s %s' % (m.group(2), m.group(1))
-        if not are_similar(norm_name, ac_name):
+        if not are_artists_similar(norm_name, ac_name):
             if verbose:
                 out(u'not similar: %s [%s] <-> %s' % (norm_name, discogs_artist.name, ac_name))
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
