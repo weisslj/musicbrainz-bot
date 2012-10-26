@@ -12,7 +12,7 @@ import config as cfg
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
-FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium)\.(?:jpeg|jpg|png|gif)', re.I)
+FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium|booklet|tray)(?:-\d+)?\.(?:jpeg|jpg|png|gif)', re.I)
 
 class CoverArtArchiveReleaseInfo(object):
 	def __init__(self, release_id):
@@ -54,7 +54,7 @@ for file in sys.argv[1:]:
 	mbid = m.group('mbid')
 	type = m.group('type')
 	caa_rel_info = CoverArtArchiveReleaseInfo(mbid)
-	if caa_rel_info.hasType(type):
+	if caa_rel_info.hasType(type) and type not in ('medium', 'booklet') and False:
 		colored_out(bcolors.WARNING, " * Release already has an image of type '%s' => skipping" % type.lower())
 		continue
 
