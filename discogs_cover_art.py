@@ -188,19 +188,21 @@ def already_processed(release, url):
     res = db.execute("SELECT 1 FROM bot_release_artwork_url WHERE release = %s AND url = %s", (release, url))
     return res.scalar() is not None
 
-def submit_cover_art(release, url, types, editnote=u''):
+def submit_cover_art(release, url, types):
     if already_processed(release, url):
         colored_out(bcolors.NONE, " * skipping already submitted image '%s'" % (url,))
     else:
         colored_out(bcolors.OKGREEN, " * Adding " + ",".join(types) + (" " if len(types)>0 else "") + "cover art '%s'" % (url,))
+        img_file = urllib2.urlopen(url)
+        im = Image.open(StringIO(img_file.read()))
+        edit_note = "'''Dimension''': %sx%s\n'''Source''': %s" % (im.size[0], im.size[1], url)
         time.sleep(5)
-        mb.add_cover_art(release, url, types, None, u'', editnote, False, True)
+        mb.add_cover_art(release, url, types, None, u'', edit_note, False, True)
         save_processed(release, url)
 
 for release in db.execute(query):
     colored_out(bcolors.OKBLUE, 'Examining release "%s" by "%s" http://musicbrainz.org/release/%s' % (release['name'], release['artist'], release['gid']))
 
-    editnote=u''
     # Front cover
     # Start with Discogs if available
     colored_out(bcolors.HEADER, ' * Discogs = %s' % (release['discogs_url'],))
@@ -243,7 +245,6 @@ for release in db.execute(query):
                 if spotify_score > best_score:
                     front_uri = image_url
                     best_score = spotify_score
-                    editnote = u'TQ'
 
     # Evaluate iTunes
     if release['barcode'] is not None and release['barcode'] != "":
@@ -258,10 +259,9 @@ for release in db.execute(query):
             if itunes_score > best_score:
                 front_uri = image_url
                 best_score = itunes_score
-                editnote = u'JU'
 
     if front_uri is not None:
-        submit_cover_art(release['gid'], front_uri, ['front'], editnote)
+        submit_cover_art(release['gid'], front_uri, ['front'])
 
     # Other images
     for image in discogs_get_secondary_images(release['discogs_url']):
