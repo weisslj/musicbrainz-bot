@@ -185,23 +185,25 @@ class MusicBrainzClient(object):
                 return
             self.b["edit-artist.gender_id"] = [str(artist['gender'])]
         if 'begin_date' in update:
-            if self.b["edit-artist.begin_date.year"]:
+            prefix = "edit-artist.period.begin_date"
+            if self.b[prefix+".year"]:
                 print " * begin date year already set, not changing"
                 return
-            self.b["edit-artist.begin_date.year"] = str(artist['begin_date_year'])
+            self.b[prefix+".year"] = str(artist['begin_date_year'])
             if artist['begin_date_month']:
-                self.b["edit-artist.begin_date.month"] = str(artist['begin_date_month'])
+                self.b[prefix+".month"] = str(artist['begin_date_month'])
                 if artist['begin_date_day']:
-                    self.b["edit-artist.begin_date.day"] = str(artist['begin_date_day'])
+                    self.b[prefix+".day"] = str(artist['begin_date_day'])
         if 'end_date' in update:
-            if self.b["edit-artist.end_date.year"]:
+            prefix = "edit-artist.period.end_date"
+            if self.b[prefix+".year"]:
                 print " * end date year already set, not changing"
                 return
-            self.b["edit-artist.end_date.year"] = str(artist['end_date_year'])
+            self.b[prefix+".year"] = str(artist['end_date_year'])
             if artist['end_date_month']:
-                self.b["edit-artist.end_date.month"] = str(artist['end_date_month'])
+                self.b[prefix+".month"] = str(artist['end_date_month'])
                 if artist['end_date_day']:
-                    self.b["edit-artist.end_date.day"] = str(artist['end_date_day'])
+                    self.b[prefix+".day"] = str(artist['end_date_day'])
         if 'comment' in update:
             if self.b["edit-artist.comment"] != '':
                 print " * comment already set, not changing"
