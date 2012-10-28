@@ -275,9 +275,9 @@ class MusicBrainzClient(object):
         for k, v in attributes.items():
             self.b["ar.attrs."+k] = v
         for k, v in begin_date.items():
-            self.b["ar.begin_date."+k] = str(v)
+            self.b["ar.period.begin_date."+k] = str(v)
         for k, v in end_date.items():
-            self.b["ar.end_date."+k] = str(v)
+            self.b["ar.period.end_date."+k] = str(v)
         self.b["ar.edit_note"] = edit_note.encode('utf8')
         try: self.b["ar.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
