@@ -12,3 +12,6 @@ TMP_DIR = '/tmp'
 AWS_KEY = '...'
 AWS_SECRET_KEY = '...'
 AWS_ASSOCIATE_TAG = '...'
+
+ROVI_API_KEY = '...'
+ROVI_SHARED_SECRET = '...'
