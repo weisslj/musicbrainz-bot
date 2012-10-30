@@ -231,7 +231,7 @@ def main(verbose=False):
             if (a_gid, discogs_url) not in bot_blacklist:
                 bot_blacklist_new.add((a_gid, discogs_url))
             continue
-        text = u'Artist appears on only one release [1] (medium %d, track %d), which is linked to discogs release [2]. Also, the track names are similar:\n' % (m_pos, t_pos)
+        text = u'Artist appears on only one release [1] (e.g. medium %d, track %d), which is linked to discogs release [2]. Also, the track names are similar:\n' % (m_pos, t_pos)
         text += u'Discogs: “%s” by %s\n' % (discogs_track['title'], combine_names([x.name for x in discogs_artists]))
         text += u'MBrainz: “%s” by “%s”\n\n' % (t_name, ac_name)
         text += u'[1] http://musicbrainz.org/release/%s\n[2] %s' % (r_gid, url)
