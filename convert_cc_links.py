@@ -85,8 +85,8 @@ def main(verbose=False):
                 url = u'http://web.archive.org/' + url
                 if verbose:
                     out(u'no license url found, trying archive.org!')
-                if u'jamendo.com' not in url:
-                    continue
+                #if u'jamendo.com' not in url:
+                #    continue
                 try:
                     browser.open(url.encode('utf-8'))
                 except:
