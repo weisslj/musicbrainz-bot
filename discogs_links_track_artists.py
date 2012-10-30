@@ -61,7 +61,7 @@ WHERE url.url IN (
     WHERE l.link_type = 76
     GROUP BY url.url
     HAVING COUNT(url.url) = 1
-) AND ac.artist_count = 1 AND r.edits_pending = 0 AND l_ru.edits_pending = 0 AND a.id IN (
+) AND ac.artist_count = 1 AND r.edits_pending = 0 AND a.edits_pending = 0 AND l_ru.edits_pending = 0 AND a.id IN (
     SELECT a.id
     FROM artist a
 
