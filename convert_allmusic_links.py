@@ -85,7 +85,12 @@ class RoviClient(object):
             url = self.url('/data/v1/performance/info', **kwargs)
         else:
             raise Exception('unknown amgid: %s' % amgid)
-        self.b.open(url)
+        try:
+            self.b.open(url)
+        except urllib2.HTTPError as e:
+            if e.code == 404 and amgid[0] == 'R':
+                url = self.url('/data/v1/release/info', **kwargs)
+                self.b.open(url)
         page = self.b.response().read()
         data = json.loads(page)
         if data['status'] == 'ok' and data['code'] == 200:
@@ -108,6 +113,17 @@ class RoviClient(object):
             text = u'AMG Title: %s' % album['title']
             if primaryArtists:
                 text += u'\nAMG Artist(s): %s' % join_words(primaryArtists)
+            return (url, text)
+        elif 'release' in data:
+            release = data['release']
+            releaseid = release['ids']['releaseId']
+            albumid = release['ids']['albumId']
+            primaryArtists = [x['name'] for x in release['primaryArtists']] if release['primaryArtists'] else []
+            url = u'http://www.allmusic.com/album/%s' % albumid.lower()
+            text = u'AMG Title: %s' % release['title']
+            if primaryArtists:
+                text += u'\nAMG Artist(s): %s' % join_words(primaryArtists)
+            text += u'\nATTENTION: Using albumId %s instead of releaseId %s, because it is a release group link!' % (albumid, releaseid)
             return (url, text)
         elif 'composition' in data:
             composition = data['composition']
