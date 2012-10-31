@@ -36,7 +36,7 @@ CREATE TABLE bot_discogs_release_group_problematic (
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute('SET search_path TO musicbrainz')
+db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
 
 editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
