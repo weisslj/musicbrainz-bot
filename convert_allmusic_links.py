@@ -15,7 +15,7 @@ import mechanize
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out
+from utils import out, program_string
 
 '''
 CREATE TABLE bot_convert_allmusic (
@@ -185,7 +185,7 @@ def main(verbose=False):
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
             continue
-        text = u'Normalize to new format.\n%s\nOld: %s\nNew: %s' % (details, url, new_url)
+        text = u'Normalize to new format.\n%s\nOld: %s\nNew: %s\n\n%s' % (details, url, new_url, program_string(__file__))
         try:
             out(u'%s -> %s' % (url, new_url))
             mb.edit_url(gid, url.encode('utf-8'), new_url.encode('utf-8'), text, auto=True)
