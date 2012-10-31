@@ -11,7 +11,7 @@ import discogs_client as discogs
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out, asciipunct
+from utils import out, program_string, asciipunct
 from mbbot.utils.pidfile import PIDFile
 import blacklist
 
@@ -157,6 +157,7 @@ def main(verbose=False):
         else:
             text = u'There is one Discogs link in this release group, and it points to this master URL.\n%s\n' % list(urls)[0]
         text += u'Also, the name of the Discogs master “%s” (by %s) is similar to the release group name.' % (master_name, master_artists)
+        text += '\n\n%s' % program_string(__file__)
         try:
             out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid,master_url))
             mb.add_url('release_group', gid, 90, master_url, text, auto=True)

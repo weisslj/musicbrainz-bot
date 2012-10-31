@@ -13,7 +13,7 @@ import sqlalchemy
 
 from editing import MusicBrainzClient
 import utils
-from utils import out
+from utils import out, program_string
 from mbbot.utils.pidfile import PIDFile
 import config as cfg
 import iso15924
@@ -122,6 +122,7 @@ def main(verbose=False):
         new_script_name = iso15924_to_mb[new_script]['name']
         new_script_id = iso15924_to_mb[new_script]['id']
         text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
+        text += '\n\n%s' % program_string(__file__)
         if not old_script_id:
             old_script_id = ''
         try:

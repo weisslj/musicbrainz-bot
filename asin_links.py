@@ -13,7 +13,7 @@ import amazonproduct
 
 from editing import MusicBrainzClient
 import config as cfg
-from utils import out, asciipunct, colored_out, bcolors
+from utils import out, program_string, asciipunct, colored_out, bcolors
 from mbbot.utils.pidfile import PIDFile
 
 '''
@@ -355,6 +355,7 @@ def main(verbose=False):
         # make "Import" bold so it is easier recognizable
         re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
         text = re_bold_import.sub(ur"'''\1'''", text)
+        text += '\n\n%s' % program_string(__file__)
         try:
             colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
             mb.add_url('release', gid, 77, url, text)

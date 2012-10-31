@@ -9,7 +9,7 @@ import sqlalchemy
 from musicbrainz2.webservice import WebService, Query, WebServiceError, ReleaseIncludes
 
 from editing import MusicBrainzClient
-from utils import out
+from utils import out, program_string
 import config as cfg
 
 '''
@@ -161,6 +161,7 @@ for artists in zeroinch.get_artists('/catalogue', cipher='all', page='1'):
                     if tracks2isrcs:
                         ws.submit_isrcs(tracks2isrcs)
                         text = u'From %s, added because of matching barcode %s.' % (url, barcode)
+                        text += '\n\n%s' % program_string(__file__)
                         mb.add_edit_note(identify_isrc_edit(tracks2isrcs.values()), text)
                 if found:
                     db.execute("INSERT INTO bot_isrc_zeroinch_submitted (url) VALUES (%s)", url)

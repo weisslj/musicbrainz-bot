@@ -12,7 +12,7 @@ import Levenshtein
 import discogs_client as discogs
 
 from editing import MusicBrainzClient
-from utils import out, asciipunct
+from utils import out, program_string, asciipunct
 import config as cfg
 from mbbot.utils.pidfile import PIDFile
 import blacklist
@@ -235,6 +235,7 @@ def main(verbose=False):
         text += u'Discogs: “%s” by %s\n' % (discogs_track['title'], combine_names([x.name for x in discogs_artists]))
         text += u'MBrainz: “%s” by “%s”\n\n' % (t_name, ac_name)
         text += u'[1] http://musicbrainz.org/release/%s\n[2] %s' % (r_gid, url)
+        text += '\n\n%s' % program_string(__file__)
         try:
             out(u'http://musicbrainz.org/artist/%s  ->  %s' % (a_gid,discogs_url))
             mb.add_url('artist', a_gid, 180, discogs_url.encode('utf-8'), text)
