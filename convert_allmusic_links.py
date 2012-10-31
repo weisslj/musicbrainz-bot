@@ -176,12 +176,12 @@ def extract_amgid(old_url):
 
 processed = set(gid for gid, in db.execute('''SELECT gid FROM bot_convert_allmusic'''))
 
-def main(verbose=False):
+def main(verbose=False, force=False):
     normal_edits_left, edits_left = mb.edits_left()
     allmusic_urls = [(url, gid) for url, gid in db.execute(query_allmusic_urls)]
     count = len(allmusic_urls)
     for i, (url, gid) in enumerate(allmusic_urls):
-        if edits_left <= 0:
+        if not force and edits_left <= 0:
             break
         if gid in processed:
             continue
@@ -216,6 +216,8 @@ if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('-v', '--verbose', action='store_true', default=False,
             help='be more verbose')
+    parser.add_option('-f', '--force', action='store_true', default=False,
+            help='ignore edits_left')
     (options, args) = parser.parse_args()
     with PIDFile('/tmp/mbbot_convert_allmusic_links.pid'):
-        main(options.verbose)
+        main(verbose=options.verbose, force=options.force)
