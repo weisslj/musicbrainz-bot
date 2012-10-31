@@ -71,19 +71,19 @@ WITH
         WHERE rg.artist_credit > 2 AND wpl.id IS NULL
             AND (rg.type IS NULL OR rg.type IN (SELECT id FROM release_group_primary_type WHERE name IN ('Album')))
             AND (tc.artist_credit IS NOT NULL """ + (' OR TRUE' if no_country_filter else '') + """)
+            AND rg.edits_pending = 0
         ORDER BY rg.artist_credit, rg.id
         LIMIT 100000
     )
-SELECT rg.id, rg.gid, rg.name, ac.name, string_agg(rgtn.name, ',') AS rg_secondary_types
+SELECT rg.id, rg.gid, rg.name, ac.name, string_agg(rgtn.name, ',') AS rg_secondary_types, b.processed
 FROM rgs_wo_wikipedia ta
 JOIN s_release_group rg ON ta.id=rg.id
 JOIN s_artist_credit ac ON rg.artist_credit=ac.id
 LEFT JOIN bot_wp_rg_link b ON rg.gid = b.gid AND b.lang = %s
 LEFT JOIN release_group_secondary_type_join rgst ON rg.id = rgst.release_group
 LEFT JOIN release_group_secondary_type rgtn ON rgst.secondary_type = rgtn.id
-WHERE b.gid IS NULL
-GROUP BY rg.artist_credit, rg.id, rg.gid, rg.name, ac.name
-ORDER BY rg.artist_credit, rg.id
+GROUP BY rg.artist_credit, rg.id, rg.gid, rg.name, ac.name, b.processed
+ORDER BY b.processed NULLS FIRST, rg.artist_credit, rg.id
 LIMIT 1000
 """
 
@@ -100,7 +100,7 @@ category_re = {}
 category_re['en'] = re.compile(r'\[\[Category:(.+?)(?:\|.*?)?\]\]')
 category_re['fr'] = re.compile(r'\[\[Cat\xe9gorie:(.+?)\]\]')
 
-for rg_id, rg_gid, rg_name, ac_name, rg_sec_types in db.execute(query, query_params):
+for rg_id, rg_gid, rg_name, ac_name, rg_sec_types, processed in db.execute(query, query_params):
     colored_out(bcolors.OKBLUE, 'Looking up release group "%s" http://musicbrainz.org/release-group/%s' % (rg_name, rg_gid))
     matches = wps.query(escape_query(rg_name), defType='dismax', qf='name', rows=100).results
     last_wp_request = time.time()
@@ -175,5 +175,7 @@ for rg_id, rg_gid, rg_name, ac_name, rg_sec_types in db.execute(query, query_par
         time.sleep(5)
         mb.add_url("release_group", rg_gid, 89, url, text, auto=auto)
         break
-    db.execute("INSERT INTO bot_wp_rg_link (gid, lang) VALUES (%s, %s)", (rg_gid, wp_lang))
-
+    if processed is None:
+        db.execute("INSERT INTO bot_wp_rg_link (gid, lang) VALUES (%s, %s)", (rg_gid, wp_lang))
+    else:
+        db.execute("UPDATE bot_wp_rg_link SET processed = now() WHERE (gid, lang) = (%s, %s)", (rg_gid, wp_lang))

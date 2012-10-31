@@ -66,6 +66,7 @@ WHERE
     ) AND
     l.edits_pending = 0 AND
     u.url LIKE 'http://"""+wp_lang+""".wikipedia.org/wiki/%%'
+    AND a.edits_pending = 0
 ORDER BY b.processed NULLS FIRST, a.id
 LIMIT 750
 """
