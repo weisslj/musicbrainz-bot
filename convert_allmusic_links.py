@@ -91,6 +91,8 @@ class RoviClient(object):
             if e.code == 404 and amgid[0] == 'R':
                 url = self.url('/data/v1/release/info', **kwargs)
                 self.b.open(url)
+            else:
+                raise
         page = self.b.response().read()
         data = json.loads(page)
         if data['status'] == 'ok' and data['code'] == 200:
