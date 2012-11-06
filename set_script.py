@@ -8,6 +8,7 @@ import pprint
 import itertools
 import operator
 import urllib2
+import socket
 
 import sqlalchemy
 
