@@ -166,11 +166,11 @@ rc = RoviClient(cfg.ROVI_API_KEY, cfg.ROVI_SHARED_SECRET)
 query_allmusic_urls = '''
 SELECT url.url, url.gid
 FROM url
-WHERE url.edits_pending = 0 AND url ~ '^http://allmusic\.com/.*'
+WHERE url.edits_pending = 0 AND url ~ E'^(?:https?://)?(?:[^/]+\.)?allmusic\.com/(?:artist|album|work|song|performance)/(?:[^/]*-)?([pqrwctf])([0-9]+).*$'
 '''
 
 def extract_amgid(old_url):
-    m = re.match(ur'^http://allmusic\.com/(?:artist|album|work|song|performance)/(?:[^/]*-)?([pqrwctf])([0-9]+)$', old_url)
+    m = re.match(ur'^(?:https?://)?(?:[^/]+\.)?allmusic\.com/(?:artist|album|work|song|performance)/(?:[^/]*-)?([pqrwctf])([0-9]+).*$', old_url)
     if m:
         amgid = ('%s%9s' % m.groups()).upper()
         return amgid
