@@ -46,7 +46,11 @@ def with_artist_entity_col(gid, db, template, table, name_table):
 
 def entity_name(gid, db, table, name_table):
     query = 'SELECT en.name, e.comment FROM '+table+' e JOIN '+name_table+' en ON e.name = en.id WHERE e.gid = %s'''
-    return db.execute(query, gid).fetchone()
+    row = db.execute(query, gid).fetchone()
+    if row is None:
+        raise Exception('no entity with gid %s found in %s' % (gid, table))
+    else:
+        return row
 
 def wiki_get_rows(url, entity):
     f = urllib.urlopen(url)
