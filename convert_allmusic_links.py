@@ -88,7 +88,7 @@ class RoviClient(object):
         try:
             self.b.open(url)
         except urllib2.HTTPError as e:
-            if e.code == 404 and amgid[0] == 'R':
+            if e.code == 404 and amgid[0] in ['R', 'W']:
                 url = self.url('/data/v1/release/info', **kwargs)
                 self.b.open(url)
             else:
