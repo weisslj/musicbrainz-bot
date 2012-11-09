@@ -37,15 +37,26 @@ def generic_entity_col(gid, db, template, table, name_table):
     return col
 
 def with_artist_entity_col(gid, db, template, table, name_table):
-    artist = entity_name(gid, db, 'artist', 'artist_name')[0]
-    name, comment = entity_name(gid, db, table, name_table)
-    col = u'[[%s:%s|%s]]' % (template, gid, u'%s – %s' % (artist, name))
+    name, comment, ac = entity_name_ac(gid, db, table, name_table)
+    ac_name = artist_credit(ac)
+    col = u'[[%s:%s|%s]]' % (template, gid, u'%s – %s' % (ac_name, name))
     if comment:
         col += u' (%s)' % comment
     return col
 
+def artist_credit(ac):
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
+
 def entity_name(gid, db, table, name_table):
     query = 'SELECT en.name, e.comment FROM '+table+' e JOIN '+name_table+' en ON e.name = en.id WHERE e.gid = %s'''
+    row = db.execute(query, gid).fetchone()
+    if row is None:
+        raise Exception('no entity with gid %s found in %s' % (gid, table))
+    else:
+        return row
+
+def entity_name_ac(gid, db, table, name_table):
+    query = 'SELECT en.name, e.comment, e.artist_credit FROM '+table+' e JOIN '+name_table+' en ON e.name = en.id WHERE e.gid = %s'''
     row = db.execute(query, gid).fetchone()
     if row is None:
         raise Exception('no entity with gid %s found in %s' % (gid, table))
