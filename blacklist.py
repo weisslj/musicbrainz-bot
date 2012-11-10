@@ -38,13 +38,13 @@ def generic_entity_col(gid, db, template, table, name_table):
 
 def with_artist_entity_col(gid, db, template, table, name_table):
     name, comment, ac = entity_name_ac(gid, db, table, name_table)
-    ac_name = artist_credit(ac)
+    ac_name = artist_credit(ac, db)
     col = u'[[%s:%s|%s]]' % (template, gid, u'%s – %s' % (ac_name, name))
     if comment:
         col += u' (%s)' % comment
     return col
 
-def artist_credit(ac):
+def artist_credit(ac, db):
     return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
 
 def entity_name(gid, db, table, name_table):
