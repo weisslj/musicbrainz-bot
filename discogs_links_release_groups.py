@@ -122,7 +122,7 @@ def main(verbose=False):
         try:
             masters = list(discogs_get_master(urls))
         except (discogs.HTTPError, discogs.requests.ConnectionError) as e:
-            out(e)
+            out('  ERROR: discogs_get_master(%s): %s' % (list(urls), e))
             continue
         if len(masters) == 0:
             if verbose:
@@ -164,6 +164,7 @@ def main(verbose=False):
             db.execute("INSERT INTO bot_discogs_release_group_set (gid,url) VALUES (%s,%s)", (gid,master_url))
             edits_left -= 1
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
+            out('  ERROR: mb.add_url(%s, %s): %s' % (gid, master_url, e))
             out(e)
     if bot_blacklist_new:
         out(blacklist.wiki_markup(bot_blacklist_new, 'release-group', db))
