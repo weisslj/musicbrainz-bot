@@ -77,6 +77,12 @@ WHERE link IN (SELECT id FROM link WHERE link_type = 108)
 AND entity1 = %s
 """
 
+ipi_codes_query = """
+SELECT ipi from artist_ipi
+WHERE artist = %s
+ORDER BY ipi
+"""
+
 country_ids = {}
 for id, code in db.execute("SELECT id, iso_code FROM country"):
     country_ids[code] = id
@@ -153,6 +159,9 @@ def main():
                 reasons.append(('END DATE', end_date_reasons))
 
         if update:
+            artist['ipi_codes'] = []
+            for (ipi,) in db.execute(ipi_codes_query, artist['id']):
+                artist['ipi_codes'].append(ipi)
             edit_note = 'From %s' % (artist['url'],)
             for field, reason in reasons:
                 edit_note += '\n\n%s:\n%s' % (field, ' '.join(reason))

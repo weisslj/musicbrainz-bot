@@ -209,6 +209,9 @@ class MusicBrainzClient(object):
                 print " * comment already set, not changing"
                 return
             self.b["edit-artist.comment"] = artist['comment'].encode('utf-8')
+        for idx, ipi in enumerate(artist['ipi_codes']):
+            self.b.new_control('text', 'edit-artist.ipi_codes.%s'%idx, {'value': str(ipi)})
+        self.b.fixup()
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
         try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
