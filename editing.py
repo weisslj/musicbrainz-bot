@@ -265,6 +265,39 @@ class MusicBrainzClient(object):
                 return False
         return True
 
+    def edit_work(self, work, update, edit_note, auto=False):
+        self.b.open(self.url("/work/%s/edit" % (work['gid'],)))
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        if 'type' in update:
+            if self.b["edit-work.type_id"] != ['']:
+                print " * type already set, not changing"
+                return
+            self.b["edit-work.type_id"] = [str(work['type'])]
+        if 'language' in update:
+            if self.b["edit-work.language_id"] != ['']:
+                print " * language already set, not changing"
+                return
+            self.b["edit-work.language_id"] = [str(work['language'])]
+        if 'comment' in update:
+            if self.b["edit-work.comment"] != '':
+                print " * comment already set, not changing"
+                return
+            self.b["edit-work.comment"] = work['comment'].encode('utf-8')
+        for idx, iswc in enumerate(work['iswcs']):
+            self.b.new_control('text', 'edit-work.iswcs.%s'%idx, {'value': str(iswc)})
+        self.b.fixup()
+        self.b["edit-work.edit_note"] = edit_note.encode('utf8')
+        try: self.b["edit-work.as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
+        self.b.submit()
+        page = self.b.response().read()
+        if "Thank you, your edit has been" not in page:
+            if 'any changes to the data already present' not in page:
+                raise Exception('unable to post edit')
+            else:
+                return False
+        return True
+
     def edit_relationship(self, rel_id, entity0_type, entity1_type, old_link_type_id, new_link_type_id, attributes, begin_date, end_date, edit_note, auto=False):
         self.b.open(self.url("/edit/relationship/edit", id=str(rel_id), type0=entity0_type, type1=entity1_type))
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
