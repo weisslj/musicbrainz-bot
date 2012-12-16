@@ -266,8 +266,8 @@ def main(verbose=False):
             continue
         if verbose:
             colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
+        mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
         try:
-            mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
             item = amazon_get_asin(barcode, country, mb_date)
         except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
             out(e)
@@ -294,6 +294,18 @@ def main(verbose=False):
         if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
             if verbose:
                 out('   * skip, is marked as Import')
+            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+            continue
+        if 'ReleaseDate' in attrs.__dict__:
+            amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+            if abs(amazon_date - mb_date) > datetime.timedelta(days=365):
+                if verbose:
+                    out('   * skip, has release date diff > 365 days')
+                db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                continue
+        else:
+            if verbose:
+                out('   * skip, has no release date')
             db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
             continue
         amazon_name = unicode(attrs.Title)
