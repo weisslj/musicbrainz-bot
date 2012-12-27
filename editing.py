@@ -403,7 +403,8 @@ class MusicBrainzClient(object):
 
             if 'tracklist' in medium:
                 tracklist_id = self.b["mediums.%s.tracklist_id" % medium_no]
-                data = urllib2.urlopen('http://musicbrainz.org/ws/js/tracklist/%s' % tracklist_id)
+                request = urllib2.Request('http://musicbrainz.org/ws/js/tracklist/%s' % tracklist_id, headers={"Accept" : "application/json"})
+                data = urllib2.urlopen(request)
                 old_tracklist = json.load(data)
 
                 edited_tracklist = []
