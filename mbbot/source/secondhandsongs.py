@@ -10,7 +10,7 @@ class SHSWebService(object):
 
     def __init__(self):
         self.last_request_time = datetime.min
-        self.REQUESTS_DELAY = 4
+        self.REQUESTS_DELAY = 10
 
     def _fetch_json(self, url, params):
         self._check_rate_limit()
