@@ -1,10 +1,11 @@
 #!/usr/bin/python
 
 import sys
+import os.path
 import solr
 
 for file in sys.argv[1:]:
-    lang = file[:2]
+    lang = os.path.basename(file)[:2]
     suffix = '_' + lang if lang != 'en' else ''
     s = solr.SolrConnection('http://localhost:8983/solr/wikipedia' + suffix)
     s.delete_query('*:*')
