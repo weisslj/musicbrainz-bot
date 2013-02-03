@@ -34,6 +34,8 @@ WITH
             JOIN l_url_work l ON l.entity1 = w.id AND l.link IN (SELECT id FROM link WHERE link_type = 280)
             JOIN url u ON u.id = l.entity0
         WHERE language IS NULL AND url NOT LIKE '%%/performance/%%'
+            /* Work should have a lyricist relation to be sure it's not an instrumental */
+            AND EXISTS (SELECT 1 FROM l_artist_work WHERE l_artist_work.entity1 = w.id AND l_artist_work.link IN (SELECT id FROM link WHERE link_type = 165))
             /* SHS link should only be linked to this work */
             AND NOT EXISTS (SELECT 1 FROM l_url_work WHERE l_url_work.entity0 = u.id AND l_url_work.entity1 <> w.id)
             /* this work should not have another SHS link attached */
@@ -46,7 +48,7 @@ FROM works_wo_lang wwol
 JOIN s_work w ON wwol.work_id = w.id
 LEFT JOIN bot_shs_work_lang b ON w.gid = b.work
 ORDER BY b.processed NULLS FIRST, w.id
-LIMIT 150
+LIMIT 500
 """
 
 iswcs_query = """
@@ -94,19 +96,18 @@ for work in db.execute(query):
         
         if shs_lang not in SHS_MB_LANG_MAPPING:
             colored_out(bcolors.FAIL, ' * No mapping defined for language ''%s' % shs_lang)
-            continue
+        else:
+            work['iswcs'] = []
+            for (iswc,) in db.execute(iswcs_query, work['id']):
+                work['iswcs'].append(iswc)
+            work['language'] = SHS_MB_LANG_MAPPING[shs_lang]
+            update = ('language',)
 
-        work['iswcs'] = []
-        for (iswc,) in db.execute(iswcs_query, work['id']):
-            work['iswcs'].append(iswc)
-        work['language'] = SHS_MB_LANG_MAPPING[shs_lang]
-        update = ('language',)            
+            colored_out(bcolors.HEADER, ' * using %s, found language: %s' % (work['shs_url'], shs_lang))
+            edit_note = 'Setting work language from attached SecondHandSongs link (%s)' % work['shs_url']
+            out(' * edit note: %s' % (edit_note,))
 
-        colored_out(bcolors.HEADER, ' * using %s, found language: %s' % (work['shs_url'], shs_lang))
-        edit_note = 'Setting work language from attached SecondHandSongs link (%s)' % work['shs_url']
-        out(' * edit note: %s' % (edit_note,))
-        
-        mb.edit_work(work, update, edit_note)
+            mb.edit_work(work, update, edit_note)
         
     else:
         colored_out(bcolors.NONE, ' * using %s, no language has been found' % (work['shs_url'],))
