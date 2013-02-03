@@ -5,8 +5,11 @@ import sqlalchemy
 import solr
 from editing import MusicBrainzClient
 from mbbot.source.secondhandsongs import SHSWebService
+from picard.similarity import similarity2
+from kitchen.text.converters import to_unicode
 import pprint
 import urllib
+import urllib2
 import time
 from utils import mangle_name, join_names, out, colored_out, bcolors
 import config as cfg
@@ -44,19 +47,21 @@ WITH
                                     AND l_url_work.link IN (SELECT id FROM link WHERE link_type = 280))
             AND l.edits_pending = 0
             AND law.edits_pending = 0
+            /* Not [unknown] */
+            AND a.gid NOT IN ('125ec42a-7229-4250-afc5-e057484327fe')
     )
 SELECT a.id, a.gid, a.name, aws.shs_url, aws.work_id, aws.work_gid, b.processed
 FROM artists_wo_shs aws
 JOIN s_artist a ON aws.artist_id = a.id
 LEFT JOIN bot_shs_link_artist b ON a.gid = b.artist
 ORDER BY b.processed NULLS FIRST, a.id
-LIMIT 150
+LIMIT 1000
 """
 
-processed_artists = set()
-
+seen_artists = set()
+matched_artists = set()
 for artist in db.execute(query):
-    if artist['gid'] in processed_artists:
+    if artist['gid'] in matched_artists:
         continue
 
     colored_out(bcolors.OKBLUE, 'Looking up artist "%s" http://musicbrainz.org/artist/%s' % (artist['name'], artist['gid']))
@@ -69,17 +74,37 @@ for artist in db.execute(query):
     
     artist_uri = None
     shs_artists = []
+    # credits of actual work
     if 'credits' in shs_work and len(shs_work['credits']) > 0:
         shs_artists.extend(shs_work['credits'])
+    # credits of original work
     if 'originalCredits' in shs_work and len(shs_work['originalCredits']) > 0:
         shs_artists.extend(shs_work['originalCredits'])
+    # performer of original recording (bands are often wrongly credited as composer/writer in MB)
+    if 'original' in shs_work and shs_work['original'] is not None:
+        m = re.match(r'http://www.secondhandsongs.com/performance/([0-9]+)', shs_work['original']['uri'])
+        if m:
+            try:
+                original = shs.lookup('recording', int(m.group(1)))
+                if 'performer' in original:
+                    shs_artists.append(original['performer']['artist'])
+            except ValueError:
+                pass
+            except urllib2.HTTPError:
+                pass
     for shs_artist in shs_artists:
-        if mangle_name(shs_artist['commonName']) == mangle_name(artist['name']):
+        shs_artist_name = mangle_name(re.sub(' \[\d+\]$', '', shs_artist['commonName']))
+        mb_artist_name = mangle_name(artist['name'])
+        if shs_artist_name == mb_artist_name:
             artist_uri = shs_artist['uri']
             break
-    
+        elif similarity2(to_unicode(shs_artist_name), to_unicode(mb_artist_name)) > 0.85:
+            print "%s => similarity = %.2f" % (shs_artist['commonName'], similarity2(to_unicode(shs_artist_name), to_unicode(mb_artist_name)))
+            artist_uri = shs_artist['uri']
+            break
+
     if artist_uri:
-        processed_artists.add(artist['gid'])
+        matched_artists.add(artist['gid'])
         colored_out(bcolors.HEADER, ' * using %s, found artist SHS URL: %s' % (artist['shs_url'], artist_uri))
         edit_note = 'Guessing artist SecondHandSongs URL from work http://musicbrainz.org/work/%s linked to %s' % (artist['work_gid'], artist['shs_url'])
         out(' * edit note: %s' % (edit_note,))
@@ -87,9 +112,9 @@ for artist in db.execute(query):
         mb.add_url('artist', artist['gid'], str(307), artist_uri, edit_note)
     else:
         colored_out(bcolors.NONE, ' * using %s, no artist SHS URL has been found' % (artist['shs_url'],))
-        continue
 
-    if artist['processed'] is None:
+    if artist['processed'] is None and artist['gid'] not in seen_artists:
         db.execute("INSERT INTO bot_shs_link_artist (artist) VALUES (%s)", (artist['gid'],))
     else:
         db.execute("UPDATE bot_shs_link_artist SET processed = now() WHERE artist = %s", (artist['gid'],))
+    seen_artists.add(artist['gid'])
