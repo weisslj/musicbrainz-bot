@@ -73,17 +73,52 @@ def get_score(src, dest):
     score = 0
 
     cur.execute("""\
-        SELECT short_link_phrase
+        SELECT short_link_phrase, link_type
         FROM l_artist_artist laa
         JOIN link l ON (laa.link=l.id)
         JOIN link_type lt ON (lt.id=link_type)
         WHERE entity0=%s AND entity1=%s""", [dest.id, src.id])
     for link in cur:
+        if link.link_type != 102: # "collaborated on"
+            return -1, u""
         score += 1
         comment += u"Relationship: %s %s %s\n" % (dest.name, clean_link_phrase(link.short_link_phrase), src.name)
 
     # Holy shitfuck!
-    # artist -> artist_credit_name -> artist_credit -> track -> tracklist -> medium -> release
+    # artist <- artist_credit_name <- artist_credit -> track -> tracklist <- medium -> release -> release_name
+    cur.execute("""\
+        SELECT r.id, r.gid, rn.name, r.release_group, string_agg(distinct t1.number, ', ') as src_tracks, string_agg(distinct t2.number, ', ') as dest_tracks
+        FROM release r
+        JOIN release_name rn ON (r.name=rn.id)
+            /* FROM artist_credit_name acn1
+            JOIN artist_credit ac1 ON (ac1.name=acn1.id)
+            JOIN track t1 ON (t1.artist_credit=ac1.id)
+            JOIN tracklist tl1 ON (t1.tracklist=tl1.id)
+            JOIN medium m1 ON (m1.tracklist=tl1.id)*/
+        JOIN medium m2 ON (m2.release=r.id)
+            JOIN tracklist tl2 ON (m2.tracklist=tl2.id)
+            JOIN track t2 ON (t2.tracklist=tl2.id)
+            JOIN artist_credit ac2 ON (t2.artist_credit=ac2.id)
+            JOIN artist_credit_name acn2 ON (ac2.id=acn2.artist_credit)
+        JOIN medium m1 ON (m1.release=r.id)
+            JOIN tracklist tl1 ON (m1.tracklist=tl1.id)
+            JOIN track t1 ON (t1.tracklist=tl1.id)
+            JOIN artist_credit ac1 ON (t1.artist_credit=ac1.id)
+            JOIN artist_credit_name acn1 ON (ac1.id=acn1.artist_credit)
+        WHERE ac1.artist_count=1
+          AND acn1.artist=%s
+          AND acn2.artist=%s
+        GROUP BY 1,2,3
+        ORDER BY count(distinct t1.number)+count(distinct t2.number) DESC, rn.name
+        """, [src.id, dest.id])
+
+    rgs = set()
+    for rel in cur:
+        # Don't report same release group multiple times. ORDER takes care of finding the best-matching one
+        if rel.release_group not in rgs:
+            rgs.add(rel.release_group)
+            score += 1
+            comment += u"\"%s\" contains tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.name, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
 
     return score, comment
 
@@ -95,7 +130,7 @@ def handle_artist(src):
     names = match[0::2]
     joins = match[1::2]
     arts = []
-    comment = u"Multiple artists. Only one artist credit.\n"
+    comment = u"Multiple artists. 1 attached artist credit. No [other] relationships.\n"
 
     if len(set(names)) != len(names):
         #print '  SKIP, dup names'
@@ -125,7 +160,7 @@ def handle_artist(src):
 
         score, c = get_score(src, dest)
         print '  ', score, dest
-        if not score:
+        if score <= 0:
             return
         if c:
             print '    ', c.strip()
@@ -149,6 +184,14 @@ WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
       FROM regexp_split_to_table(a.name, %(re)s) c_name
       ) AND array_length(regexp_split_to_array(a.name, %(re)s), 1) > 1
   --AND gid='a07fead8-b3a8-4ac9-9f4d-f59fb1a1d585'
+
+  -- l_artist_label is handled differently in Python code
+  AND not exists(SELECT * FROM l_artist_label WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_recording WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_release WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_release_group WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_url WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_work WHERE entity0=a.id)
 --ORDER BY length(name) DESC
 --LIMIT 1000
 """
