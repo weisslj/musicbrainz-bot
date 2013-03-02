@@ -5,3 +5,5 @@ cookie = 'musicbrainz_server_session=XXX'
 # PostgreSQL connection string: http://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
 dbconn = 'dbname=mb'
 
+dry_run = False
+confirm = True

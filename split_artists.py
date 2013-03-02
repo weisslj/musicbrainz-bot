@@ -21,14 +21,15 @@ state = set(x.strip() for x in statefile.readlines())
 ####
 
 def done(gid):
-    statefile.write("%s\n" % gid)
-    statefile.flush()
+    if not config.dry_run:
+        statefile.write("%s\n" % gid)
+        statefile.flush()
     state.add(gid)
 
 def encode_dict(d):
     l = []
     for k, v in sorted(d.items()):
-        print "%s=%r" % (k, v)
+        print "  %s=%r" % (k, v)
         v = unicode(v).encode('utf8')
         l.append((k, v))
     print
@@ -39,6 +40,8 @@ def do_request(url, dic):
     print "POST", url
 
     rawdata = encode_dict(dic)
+    if config.dry_run:
+        return
     req = urllib2.Request(config.url + url, data=rawdata, headers={'Cookie': config.cookie, 'User-Agent': USER_AGENT})
     resp = urllib2.urlopen(req)
     code = resp.getcode()
@@ -149,8 +152,16 @@ def find_best_artist(src, name):
         return matches[0]
     else:
         # Too many/too few matches
-        print '  SKIP, found %d positive matches' % len(matches)
+        print "  SKIP, found %d positive matches for %s" % (len(matches), name)
         return None, None, None
+
+def prompt(question):
+    answer = None
+    while answer not in ['y', 'n']:
+        print question,
+        answer = raw_input().strip()
+
+    return answer == 'y'
 
 def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
@@ -192,10 +203,13 @@ def handle_artist(src):
         del_rels.extend(rels)
         comment += c
 
+    if config.confirm:
+        if not prompt("Submit? [y/n]"):
+            return
+
     #print '  ', joins
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
     postdata = construct_post(arts, names, joins, comment.strip())
-    print '  SUBMITTING!', url
     do_request(url, postdata)
 
     for rel in del_rels:
