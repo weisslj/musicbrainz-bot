@@ -10,8 +10,6 @@ from psycopg2.extras import NamedTupleCursor
 import config
 
 db = psycopg2.connect(config.dbconn)
-cur = db.cursor(cursor_factory=NamedTupleCursor)
-cur2 = db.cursor(cursor_factory=NamedTupleCursor)
 
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
@@ -49,7 +47,7 @@ def do_request(url, dic):
     assert code == 200
     assert "Thank you, your edit has been entered into the edit queue for peer review." in data
 
-def split_artist(arts, joins, comment):
+def construct_post(arts, joins, comment):
     assert len(arts) == len(joins)+1
     joins.append('')
 
@@ -87,7 +85,9 @@ def get_score(src, dest):
     # Holy shitfuck!
     # artist <- artist_credit_name <- artist_credit -> track -> tracklist <- medium -> release -> release_name
     cur.execute("""\
-        SELECT r.id, r.gid, rn.name, r.release_group, string_agg(distinct t1.number, ', ') as src_tracks, string_agg(distinct t2.number, ', ') as dest_tracks
+        SELECT r.id, r.gid, rn.name, r.release_group,
+            string_agg(distinct t1.number, ', ' order by t1.number) as src_tracks,
+            string_agg(distinct t2.number, ', ' order by t2.number) as dest_tracks
         FROM release r
         JOIN release_name rn ON (r.name=rn.id)
             /* FROM artist_credit_name acn1
@@ -109,7 +109,7 @@ def get_score(src, dest):
           AND acn1.artist=%s
           AND acn2.artist=%s
         GROUP BY 1,2,3
-        ORDER BY count(distinct t1.number)+count(distinct t2.number) DESC, rn.name
+        ORDER BY count(distinct t1.position)+count(distinct t2.position) DESC, rn.name
         """, [src.id, dest.id])
 
     rgs = set()
@@ -118,9 +118,32 @@ def get_score(src, dest):
         if rel.release_group not in rgs:
             rgs.add(rel.release_group)
             score += 1
-            comment += u"\"%s\" contains tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.name, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
+            comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.name, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
 
     return score, comment
+
+def find_best_artist(src, name):
+    cur = db.cursor(cursor_factory=NamedTupleCursor)
+    cur.execute("SELECT id, gid, name FROM s_artist WHERE name=%s", [name])
+    matches = []
+
+    # Find the best-matching artist. Currently we only accept 1 positive-score artist
+    for art in cur:
+        score, c = get_score(src, art)
+        print "  %d %s: %sartist/%s" % (score, art.name, config.url, art.gid)
+        if score <= 0:
+            continue
+
+        matches.append((art, c))
+        if c:
+            print '    ', c.strip().replace('\n', '\n     ')
+
+    if len(matches) == 1:
+        return matches[0]
+    else:
+        # Too many/too few matches
+        print '  SKIP, found %d good matches' % len(matches)
+        return None, None
 
 def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
@@ -150,41 +173,34 @@ def handle_artist(src):
         #print '  SKIP credit has multiple artists'
         return
 
-    print "%s %sartist/%s" % (src.name, config.url, src.gid)
+    print "%s: %sartist/%s" % (src.name, config.url, src.gid)
 
     for name in names:
-        cur.execute("SELECT id, gid, name FROM s_artist WHERE name=%s", [name])
-        assert cur.rowcount == 1, "%d rows" % cur2.rowcount
-        dest = cur.fetchone()
-        arts.append(dest)
-
-        score, c = get_score(src, dest)
-        print '  ', score, dest
-        if score <= 0:
+        art, c = find_best_artist(src, name)
+        if not art:
             return
-        if c:
-            print '    ', c.strip()
+        arts.append(art)
         comment += c
+
+    assert len(arts) == len(names)
 
     #print '  ', joins
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
-    postdata = split_artist(arts, joins, comment.strip())
+    postdata = construct_post(arts, joins, comment.strip())
     print '  SUBMITTING!', url
     do_request(url, postdata)
     done(src.gid)
-    sys.exit()
+    #print "AIEEE"
+    #sys.exit()
 
 split_re = '(, | & )'
 query = """\
 SELECT id, gid, name
 FROM s_artist a
 WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
-  -- SELECT exists(SELECT * FROM s_artist b WHERE name=c_name)
-    SELECT (SELECT count(*)=1 FROM s_artist b WHERE name=c_name)
+    SELECT exists(SELECT * FROM s_artist b WHERE name=c_name)
       FROM regexp_split_to_table(a.name, %(re)s) c_name
       ) AND array_length(regexp_split_to_array(a.name, %(re)s), 1) > 1
-  --AND gid='a07fead8-b3a8-4ac9-9f4d-f59fb1a1d585'
-
   -- l_artist_label is handled differently in Python code
   AND not exists(SELECT * FROM l_artist_label WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_recording WHERE entity0=a.id)
@@ -196,9 +212,15 @@ WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
 --LIMIT 1000
 """
 
-cur.execute(query, {'re': split_re})
-for art in cur:
-    if art.gid in state:
-        print "Skipping", art.gid
-    else:
-        handle_artist(art)
+def run_bot():
+    cur = db.cursor(cursor_factory=NamedTupleCursor)
+    cur.execute(query, {'re': split_re})
+    print "TOTAL found", cur.rowcount
+    for art in cur:
+        if art.gid in state:
+            print "Skipping", art.gid
+        else:
+            handle_artist(art)
+
+if __name__=='__main__':
+    run_bot()
