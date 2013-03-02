@@ -47,14 +47,14 @@ def do_request(url, dic):
     assert code == 200
     assert "Thank you, your edit has been entered into the edit queue for peer review." in data
 
-def construct_post(arts, joins, comment):
-    assert len(arts) == len(joins)+1
+def construct_post(arts, names, joins, comment):
+    assert len(arts) == len(names) == len(joins)+1
     joins.append('')
 
     postdata = {}
-    for i, (art, join) in enumerate(zip(arts, joins)):
+    for i, (art, name, join) in enumerate(zip(arts, names, joins)):
         key = 'split-artist.artist_credit.names.%d.' % i
-        postdata[key + 'name'] = ''
+        postdata[key + 'name'] = name if art.name!=name else ""
         postdata[key + 'artist.name'] = art.name
         postdata[key + 'artist.id'] = art.id
         postdata[key + 'join_phrase'] = join
@@ -124,10 +124,10 @@ def get_score(src, dest):
 
 def find_best_artist(src, name):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
-    cur.execute("SELECT id, gid, name FROM s_artist WHERE name=%s", [name])
+    cur.execute("SELECT id, gid, name FROM s_artist WHERE lower(name)=lower(%s)", [name])
     matches = []
 
-    # Find the best-matching artist. Currently we only accept 1 positive-score artist
+    # Find the best-matching artist. Currently we only accept 1 positive-score artist, otherwise it's considered ambiguous
     for art in cur:
         score, c = get_score(src, art)
         print "  %d %s: %sartist/%s" % (score, art.name, config.url, art.gid)
@@ -182,11 +182,9 @@ def handle_artist(src):
         arts.append(art)
         comment += c
 
-    assert len(arts) == len(names)
-
     #print '  ', joins
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
-    postdata = construct_post(arts, joins, comment.strip())
+    postdata = construct_post(arts, names, joins, comment.strip())
     print '  SUBMITTING!', url
     do_request(url, postdata)
     done(src.gid)
@@ -198,8 +196,8 @@ query = """\
 SELECT id, gid, name
 FROM s_artist a
 WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
-    SELECT exists(SELECT * FROM s_artist b WHERE name=c_name)
-      FROM regexp_split_to_table(a.name, %(re)s) c_name
+    SELECT exists(SELECT * FROM s_artist b WHERE lower(name)=c_name)
+      FROM regexp_split_to_table(lower(a.name), %(re)s) c_name
       ) AND array_length(regexp_split_to_array(a.name, %(re)s), 1) > 1
   -- l_artist_label is handled differently in Python code
   AND not exists(SELECT * FROM l_artist_label WHERE entity0=a.id)
@@ -214,7 +212,9 @@ WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
 
 def run_bot():
     cur = db.cursor(cursor_factory=NamedTupleCursor)
-    cur.execute(query, {'re': split_re})
+    args = {'re': split_re}
+    print cur.mogrify(query, args)
+    cur.execute(query, args)
     print "TOTAL found", cur.rowcount
     for art in cur:
         if art.gid in state:
