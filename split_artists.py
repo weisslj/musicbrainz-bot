@@ -171,28 +171,22 @@ def handle_credit(src, cred, comment):
     arts = []
     if len(set(names)) != len(names):
         #print '  SKIP, dup names'
-        return
+        return None, None
 
     for name in names:
         art, rels, c = find_best_artist(src, name)
         if not art:
-            return
+            return None, None
         arts.append(art)
         del_rels.extend(rels)
         comment += c
 
-    if config.confirm:
-        if not prompt("Submit? [y/n]"):
-            return
-
+    # Will call do_request with these values
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
     postdata = construct_post(arts, names, joins, comment.strip())
-    do_request(url, postdata)
+    cred_tx = (url, postdata)
 
-    for rel in del_rels:
-        do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %sartist/%s/open_edits" % (config.url, src.gid))
-
-    done(src.gid)
+    return cred_tx, del_rels
 
 def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
@@ -217,12 +211,15 @@ def handle_artist(src):
     #if cred.artist_count != 1:
     #    print "  SKIP credit has multiple artists"
     #    return
+    del_rels = None
+    cred_txs = []
     for cred in cur:
+        print "  ----"
         if cred.name != src.name:
             # Issue #1
             # Artist name "Giraut de Bornelh & Peire Cardenal"
             # Credited as "Giraut de Bornelh - Peire Cardenal"
-            print "  SKIP artist credit has different name"
+            print "  SKIP artist credit \"%s\" has different name" % cred.name
             continue
 
         comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)" % (cred_count, cred.ref_count, src.r_count)
@@ -230,7 +227,35 @@ def handle_artist(src):
             comment += " Edit confirmed by human."
         comment += "\n"
 
-        handle_credit(src, cred, comment)
+        last_rels = del_rels
+        cred_tx, del_rels = handle_credit(src, cred, comment)
+        if cred_tx is None:
+            continue
+        cred_txs.append(cred_tx)
+
+        # Sanity check, every credit must find the same rels to remove
+        if last_rels is not None:
+            assert last_rels == del_rels
+
+    if not cred_txs:
+        return
+
+    if config.confirm:
+        if not prompt("Submit? [y/n]"):
+            return
+
+    # Complete all transactions
+    for tx in cred_txs:
+        do_request(*tx)
+
+    # Only delete relationships if all credits were fixed
+    if len(cred_txs) == cred_count:
+        for rel in del_rels:
+            # Will call do_del_relationship with these values
+            do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %sartist/%s/open_edits" % (config.url, src.gid))
+
+    # Only delete relationships if all credits were renamed
+    done(src.gid)
 
 split_re = '(, | [&+] )'
 query = """\
