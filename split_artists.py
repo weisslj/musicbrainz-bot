@@ -163,47 +163,15 @@ def prompt(question):
 
     return answer == 'y'
 
-def handle_artist(src):
-    cur = db.cursor(cursor_factory=NamedTupleCursor)
-
-    #print src
+def handle_credit(src, cred, comment):
+    del_rels = []
     match = re.split(split_re, src.name)
     names = match[0::2]
     joins = match[1::2]
     arts = []
-    comment = u"Multiple artists. 1 attached artist credit. No [other] relationships."
-    if config.confirm:
-        comment += " Edit confirmed by human."
-    comment += "\n"
-
     if len(set(names)) != len(names):
         #print '  SKIP, dup names'
         return
-
-    cur.execute("""\
-        SELECT ac.id, ac.artist_count, ac_an.name
-        FROM artist_credit ac
-        JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
-        JOIN artist a ON (acn.artist=a.id)
-        JOIN artist_name ac_an ON (ac.name=ac_an.id)
-        WHERE a.id=%s""", [src.id])
-    if cur.rowcount != 1:
-        #print '  SKIP %d credits' % cur.rowcount
-        return
-    cred = cur.fetchone()
-    if cred.artist_count != 1:
-        #print "  SKIP credit has multiple artists"
-        return
-    if cred.name != src.name:
-        # Issue #1
-        # Artist name "Giraut de Bornelh & Peire Cardenal"
-        # Credited as "Giraut de Bornelh - Peire Cardenal"
-        print "  SKIP artist credit has different name"
-        return
-
-    print "%s: %sartist/%s" % (src.name, config.url, src.gid)
-
-    del_rels = []
 
     for name in names:
         art, rels, c = find_best_artist(src, name)
@@ -226,25 +194,74 @@ def handle_artist(src):
 
     done(src.gid)
 
+def handle_artist(src):
+    cur = db.cursor(cursor_factory=NamedTupleCursor)
+
+    #print src
+    print "%s (%d refs, %d rec): %sartist/%s" % (src.name, src.ref_count, src.r_count, config.url, src.gid)
+
+    cur.execute("""\
+        SELECT ac.id, ac.artist_count, ac_an.name, ac.ref_count
+        FROM artist_credit ac
+        JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
+        JOIN artist a ON (acn.artist=a.id)
+        JOIN artist_name ac_an ON (ac.name=ac_an.id)
+        WHERE a.id=%s""", [src.id])
+    cred_count = cur.rowcount
+    #if cred_count < 2:
+    #    return
+    #if cur.rowcount != 1:
+    #    print '  SKIP %d credits' % cur.rowcount
+    #    return
+    #cred = cur.fetchone()
+    #if cred.artist_count != 1:
+    #    print "  SKIP credit has multiple artists"
+    #    return
+    for cred in cur:
+        if cred.name != src.name:
+            # Issue #1
+            # Artist name "Giraut de Bornelh & Peire Cardenal"
+            # Credited as "Giraut de Bornelh - Peire Cardenal"
+            print "  SKIP artist credit has different name"
+            continue
+
+        comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)" % (cred_count, cred.ref_count, src.r_count)
+        if config.confirm:
+            comment += " Edit confirmed by human."
+        comment += "\n"
+
+        handle_credit(src, cred, comment)
+
 split_re = '(, | [&+] )'
 query = """\
-SELECT id, gid, name
-FROM s_artist a
+SELECT a.id, a.gid, an.name, ac.ref_count,
+    (SELECT count(*)
+     FROM recording r
+     JOIN artist_credit ac ON (r.artist_credit=ac.id)
+     JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
+     WHERE acn.artist=a.id) AS r_count
+FROM artist a
+    JOIN artist_name an ON (a.name=an.id)
+JOIN artist_credit_name acn ON (a.id=acn.artist)
+    JOIN artist_credit ac ON (acn.artist_credit=ac.id)
+    --JOIN artist_name ac_an ON (ac.name=ac_an.id)
+
 WHERE edits_pending=0
-  AND name ~ %(re)s
+  AND a.name = ac.name -- must have same name
+  AND an.name ~ %(re)s
   AND true = ALL(
     SELECT exists(SELECT * FROM s_artist b WHERE lower(name)=c_name)
-      FROM regexp_split_to_table(lower(a.name), %(re)s) c_name
-      ) AND array_length(regexp_split_to_array(a.name, %(re)s), 1) > 1
+      FROM regexp_split_to_table(lower(an.name), %(re)s) c_name
+      ) AND array_length(regexp_split_to_array(an.name, %(re)s), 1) > 1
+
   -- l_artist_label is handled differently in Python code
-  AND not exists(SELECT * FROM l_artist_label WHERE entity0=a.id)
-  AND not exists(SELECT * FROM l_artist_recording WHERE entity0=a.id)
-  AND not exists(SELECT * FROM l_artist_release WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_label         WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_recording     WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_release       WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_release_group WHERE entity0=a.id)
-  AND not exists(SELECT * FROM l_artist_url WHERE entity0=a.id)
-  AND not exists(SELECT * FROM l_artist_work WHERE entity0=a.id)
---ORDER BY length(name) DESC
---LIMIT 1000
+  AND not exists(SELECT * FROM l_artist_url           WHERE entity0=a.id)
+  AND not exists(SELECT * FROM l_artist_work          WHERE entity0=a.id)
+ORDER BY ac.ref_count, r_count
 """
 
 def run_bot():
