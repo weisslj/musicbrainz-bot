@@ -171,7 +171,10 @@ def handle_artist(src):
     names = match[0::2]
     joins = match[1::2]
     arts = []
-    comment = u"Multiple artists. 1 attached artist credit. No [other] relationships.\n"
+    comment = u"Multiple artists. 1 attached artist credit. No [other] relationships."
+    if config.confirm:
+        comment += " Edit confirmed by human."
+    comment += "\n"
 
     if len(set(names)) != len(names):
         #print '  SKIP, dup names'
