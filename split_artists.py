@@ -1,6 +1,6 @@
 #!/usr/bin/env python
+# encoding=utf-8
 
-import sys
 import re
 import urllib2
 import urllib
@@ -217,7 +217,6 @@ def handle_artist(src):
         if not prompt("Submit? [y/n]"):
             return
 
-    #print '  ', joins
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
     postdata = construct_post(arts, names, joins, comment.strip())
     do_request(url, postdata)
@@ -226,14 +225,14 @@ def handle_artist(src):
         do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %sartist/%s/open_edits" % (config.url, src.gid))
 
     done(src.gid)
-    #print "AIEEE"
-    #sys.exit()
 
-split_re = '(, | & )'
+split_re = '(, | [&+] )'
 query = """\
 SELECT id, gid, name
 FROM s_artist a
-WHERE edits_pending=0 AND name ilike '%%&%%' AND true = ALL(
+WHERE edits_pending=0
+  AND name ~ %(re)s
+  AND true = ALL(
     SELECT exists(SELECT * FROM s_artist b WHERE lower(name)=c_name)
       FROM regexp_split_to_table(lower(a.name), %(re)s) c_name
       ) AND array_length(regexp_split_to_array(a.name, %(re)s), 1) > 1
