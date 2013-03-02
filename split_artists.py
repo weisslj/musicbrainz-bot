@@ -47,6 +47,10 @@ def do_request(url, dic):
     assert code == 200
     assert "Thank you, your edit has been entered into the edit queue for peer review." in data
 
+def do_del_relationship(rel_id, comment):
+    postdata = {'confirm.edit_note': comment}
+    do_request('edit/relationship/delete?type1=artist&type0=artist&id=%d' % rel_id, postdata)
+
 def construct_post(arts, names, joins, comment):
     assert len(arts) == len(names) == len(joins)+1
     joins.append('')
@@ -69,18 +73,21 @@ def get_score(src, dest):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
     comment = u""
     score = 0
+    rels = []
 
     cur.execute("""\
-        SELECT short_link_phrase, link_type
+        SELECT laa.id, short_link_phrase, link_type
         FROM l_artist_artist laa
         JOIN link l ON (laa.link=l.id)
         JOIN link_type lt ON (lt.id=link_type)
         WHERE entity0=%s AND entity1=%s""", [dest.id, src.id])
     for link in cur:
         if link.link_type != 102: # "collaborated on"
-            return -1, u""
+            # Wrong relationship type, can't handle that
+            return -1, rels, comment
         score += 1
         comment += u"Relationship: %s %s %s\n" % (dest.name, clean_link_phrase(link.short_link_phrase), src.name)
+        rels.append(link)
 
     # Holy shitfuck!
     # artist <- artist_credit_name <- artist_credit -> track -> tracklist <- medium -> release -> release_name
@@ -120,7 +127,7 @@ def get_score(src, dest):
             score += 1
             comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.name, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
 
-    return score, comment
+    return score, rels, comment
 
 def find_best_artist(src, name):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
@@ -129,12 +136,12 @@ def find_best_artist(src, name):
 
     # Find the best-matching artist. Currently we only accept 1 positive-score artist, otherwise it's considered ambiguous
     for art in cur:
-        score, c = get_score(src, art)
+        score, rels, c = get_score(src, art)
         print "  %d %s: %sartist/%s" % (score, art.name, config.url, art.gid)
         if score <= 0:
             continue
 
-        matches.append((art, c))
+        matches.append((art, rels, c))
         if c:
             print '    ', c.strip().replace('\n', '\n     ')
 
@@ -142,8 +149,8 @@ def find_best_artist(src, name):
         return matches[0]
     else:
         # Too many/too few matches
-        print '  SKIP, found %d good matches' % len(matches)
-        return None, None
+        print '  SKIP, found %d positive matches' % len(matches)
+        return None, None, None
 
 def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
@@ -175,11 +182,14 @@ def handle_artist(src):
 
     print "%s: %sartist/%s" % (src.name, config.url, src.gid)
 
+    del_rels = []
+
     for name in names:
-        art, c = find_best_artist(src, name)
+        art, rels, c = find_best_artist(src, name)
         if not art:
             return
         arts.append(art)
+        del_rels.extend(rels)
         comment += c
 
     #print '  ', joins
@@ -187,6 +197,10 @@ def handle_artist(src):
     postdata = construct_post(arts, names, joins, comment.strip())
     print '  SUBMITTING!', url
     do_request(url, postdata)
+
+    for rel in del_rels:
+        do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %sartist/%s/open_edits" % (config.url, src.gid))
+
     done(src.gid)
     #print "AIEEE"
     #sys.exit()
