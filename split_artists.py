@@ -105,16 +105,16 @@ def get_score(src, dest):
             JOIN track t1 ON (t1.artist_credit=ac1.id)
             JOIN tracklist tl1 ON (t1.tracklist=tl1.id)
             JOIN medium m1 ON (m1.tracklist=tl1.id)*/
-        JOIN medium m2 ON (m2.release=r.id)
-            JOIN tracklist tl2 ON (m2.tracklist=tl2.id)
-            JOIN track t2 ON (t2.tracklist=tl2.id)
-            JOIN artist_credit ac2 ON (t2.artist_credit=ac2.id)
-            JOIN artist_credit_name acn2 ON (ac2.id=acn2.artist_credit)
         JOIN medium m1 ON (m1.release=r.id)
             JOIN tracklist tl1 ON (m1.tracklist=tl1.id)
             JOIN track t1 ON (t1.tracklist=tl1.id)
             JOIN artist_credit ac1 ON (t1.artist_credit=ac1.id)
             JOIN artist_credit_name acn1 ON (ac1.id=acn1.artist_credit)
+        JOIN medium m2 ON (m2.release=r.id)
+            JOIN tracklist tl2 ON (m2.tracklist=tl2.id)
+            JOIN track t2 ON (t2.tracklist=tl2.id)
+            JOIN artist_credit ac2 ON (t2.artist_credit=ac2.id)
+            JOIN artist_credit_name acn2 ON (ac2.id=acn2.artist_credit)
         WHERE ac1.artist_count=1
           AND acn1.artist=%s
           AND acn2.artist=%s
@@ -181,17 +181,24 @@ def handle_artist(src):
         return
 
     cur.execute("""\
-        SELECT ac.id, ac.artist_count
+        SELECT ac.id, ac.artist_count, ac_an.name
         FROM artist_credit ac
         JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
         JOIN artist a ON (acn.artist=a.id)
+        JOIN artist_name ac_an ON (ac.name=ac_an.id)
         WHERE a.id=%s""", [src.id])
     if cur.rowcount != 1:
         #print '  SKIP %d credits' % cur.rowcount
         return
     cred = cur.fetchone()
     if cred.artist_count != 1:
-        #print '  SKIP credit has multiple artists'
+        #print "  SKIP credit has multiple artists"
+        return
+    if cred.name != src.name:
+        # Issue #1
+        # Artist name "Giraut de Bornelh & Peire Cardenal"
+        # Credited as "Giraut de Bornelh - Peire Cardenal"
+        print "  SKIP artist credit has different name"
         return
 
     print "%s: %sartist/%s" % (src.name, config.url, src.gid)
