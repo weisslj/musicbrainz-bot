@@ -259,7 +259,7 @@ def handle_artist(src):
     # Only delete relationships if all credits were renamed
     done(src.gid)
 
-split_re = ur'((?:\s*[*&+,/]\s*|(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|и)\s+))'
+split_re = ur'((?:(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|и)\s+|\s*[*&+,/]\s*))'
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
     (SELECT count(*)
