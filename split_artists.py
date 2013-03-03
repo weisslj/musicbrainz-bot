@@ -222,7 +222,7 @@ def handle_artist(src):
             print "  SKIP artist credit \"%s\" has different name" % cred.name
             continue
 
-        comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)" % (cred_count, cred.ref_count, src.r_count)
+        comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)." % (cred_count, cred.ref_count, src.r_count)
         if config.confirm:
             comment += " Edit confirmed by human."
         comment += "\n"
@@ -257,7 +257,7 @@ def handle_artist(src):
     # Only delete relationships if all credits were renamed
     done(src.gid)
 
-split_re = '(, | [&+] )'
+split_re = r'((?:\s*[*&+,/]\s*|\s+(?:,\s*)?(?:and|feat\.?|vs\.?|presents|with)\s+| - ))'
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
     (SELECT count(*)
