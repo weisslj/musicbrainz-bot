@@ -173,6 +173,8 @@ def handle_credit(src, cred, comment):
         #print '  SKIP, dup names'
         return None, None
 
+    assert len(names) > 1
+
     for name in names:
         art, rels, c = find_best_artist(src, name)
         if not art:
@@ -257,7 +259,7 @@ def handle_artist(src):
     # Only delete relationships if all credits were renamed
     done(src.gid)
 
-split_re = r'((?:\s*[*&+,/]\s*|\s+(?:,\s*)?(?:and|feat\.?|vs\.?|presents|with)\s+| - ))'
+split_re = ur'((?:\s*[*&+,/]\s*|(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|и)\s+))'
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
     (SELECT count(*)
