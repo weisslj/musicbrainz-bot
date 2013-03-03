@@ -199,6 +199,10 @@ def handle_credit(src, cred, comment):
         del_rels.extend(rels)
         comment += c
 
+    if len(set(art.id for art in arts)) != len(names):
+        print "  SKIP, artist has split personality disorder! (%s)" % " / ".join(art.description for art in arts)
+        return None, None
+
     # Will call do_request with these values
     url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
     postdata = construct_post(arts, names, joins, comment.strip())
