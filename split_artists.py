@@ -165,7 +165,7 @@ def prompt(question):
 
 def handle_credit(src, cred, comment):
     del_rels = []
-    match = re.split(split_re, src.name)
+    match = split_rec.split(src.name)
     names = match[0::2]
     joins = match[1::2]
     arts = []
@@ -260,6 +260,7 @@ def handle_artist(src):
     done(src.gid)
 
 split_re = ur'((?:(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|и)\s+|\s*[*&+,/]\s*))'
+split_rec = re.compile(split_re)
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
     (SELECT count(*)
