@@ -90,7 +90,7 @@ def get_score(src, dest):
             # Wrong relationship type, can't handle that
             return -1, rels, comment
         score += 1
-        comment += u"Relationship: %s %s %s\n" % (dest.name, clean_link_phrase(link.short_link_phrase), src.name)
+        comment += u"Relationship: %s %s %s\n" % (dest.description, clean_link_phrase(link.short_link_phrase), src.name)
         rels.append(link)
 
     # Holy shitfuck!
@@ -129,19 +129,34 @@ def get_score(src, dest):
         if rel.release_group not in rgs:
             rgs.add(rel.release_group)
             score += 1
-            comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.name, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
+            comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.description, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
 
     return score, rels, comment
 
 def find_best_artist(src, name):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
-    cur.execute("SELECT id, gid, name FROM s_artist WHERE lower(name)=lower(%s)", [name])
+    cur.execute("""\
+    -- Don't return same artist twice even if both alias and name match
+    SELECT DISTINCT ON (id) * FROM (
+        SELECT a.id, a.gid, an.name, an.name as description
+            FROM artist a
+            JOIN artist_name an ON (a.name=an.id)
+            WHERE lower(an.name)=lower(%(name)s)
+        UNION ALL
+        SELECT a.id, a.gid, an.name, an.name ||' (alias '|| aa_n.name ||')' as description
+            FROM artist a
+            JOIN artist_name an ON (a.name=an.id)
+            JOIN artist_alias aa ON (aa.artist=a.id)
+            JOIN artist_name aa_n ON (aa.name=aa_n.id)
+            WHERE lower(aa_n.name)=lower(%(name)s)
+    ) subq ORDER BY id, description
+        """, {'name': name})
     matches = []
 
     # Find the best-matching artist. Currently we only accept 1 positive-score artist, otherwise it's considered ambiguous
     for art in cur:
         score, rels, c = get_score(src, art)
-        print "  %d %s: %sartist/%s" % (score, art.name, config.url, art.gid)
+        print "  %d %s: %sartist/%s" % (score, art.description, config.url, art.gid)
         if score <= 0:
             continue
 
@@ -260,7 +275,7 @@ def handle_artist(src):
     # Only delete relationships if all credits were renamed
     done(src.gid)
 
-split_re = ur"((?:(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
+split_re = ur"((?:(?:\s*,\s*|\s+)(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
 split_rec = re.compile(split_re)
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
@@ -280,7 +295,7 @@ WHERE edits_pending=0
   AND (%(filter)s IS NULL OR an.name ~ %(filter)s) -- PostgreSQL will optimize out if filter is NULL
   AND an.name ~ %(re)s
   AND true = ALL(
-    SELECT exists(SELECT * FROM s_artist b WHERE lower(name)=c_name)
+    SELECT exists(SELECT * FROM artist_name an WHERE lower(an.name)=c_name)
       FROM regexp_split_to_table(lower(an.name), %(re)s) c_name
       ) AND array_length(regexp_split_to_array(an.name, %(re)s), 1) > 1
 
