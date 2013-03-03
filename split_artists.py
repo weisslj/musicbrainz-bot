@@ -2,6 +2,7 @@
 # encoding=utf-8
 
 import re
+import sys
 import urllib2
 import urllib
 import psycopg2
@@ -152,7 +153,7 @@ def find_best_artist(src, name):
         return matches[0]
     else:
         # Too many/too few matches
-        print "  SKIP, found %d positive matches for %s" % (len(matches), name)
+        print "  SKIP, found %d positive matches for %s (%d total)" % (len(matches), name, cur.rowcount)
         return None, None, None
 
 def prompt(question):
@@ -259,7 +260,7 @@ def handle_artist(src):
     # Only delete relationships if all credits were renamed
     done(src.gid)
 
-split_re = ur'((?:(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|и)\s+|\s*[*&+,/]\s*))'
+split_re = ur"((?:(?:\s*,)?\s+(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
 split_rec = re.compile(split_re)
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
@@ -276,6 +277,7 @@ JOIN artist_credit_name acn ON (a.id=acn.artist)
 
 WHERE edits_pending=0
   AND a.name = ac.name -- must have same name
+  AND (%(filter)s IS NULL OR an.name ~ %(filter)s) -- PostgreSQL will optimize out if filter is NULL
   AND an.name ~ %(re)s
   AND true = ALL(
     SELECT exists(SELECT * FROM s_artist b WHERE lower(name)=c_name)
@@ -292,9 +294,9 @@ WHERE edits_pending=0
 ORDER BY ac.ref_count, r_count
 """
 
-def run_bot():
+def run_bot(filter=None):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
-    args = {'re': split_re}
+    args = {'re': split_re, 'filter': filter}
     print cur.mogrify(query, args)
     cur.execute(query, args)
     print "TOTAL found", cur.rowcount
@@ -305,4 +307,8 @@ def run_bot():
             handle_artist(art)
 
 if __name__=='__main__':
-    run_bot()
+    if len(sys.argv) > 1:
+        filter = sys.argv[1].decode('utf8')
+    else:
+        filter = None
+    run_bot(filter)
