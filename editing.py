@@ -357,14 +357,14 @@ class MusicBrainzClient(object):
         for k, v in attributes.items():
             self.b.form.find_control(k).readonly = False
             if self.b[k] != v[0] and v[0] is not None:
-                print " * %s has changed, aborting" % k
-                return
+                print " * %s has changed to %r, aborting" % (k, self.b[k])
+                return False
             if self.b[k] != v[1]:
                 changed = True
                 self.b[k] = v[1]
         if not changed:
             print " * already set, not changing"
-            return
+            return False
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_editnote")
         page = self.b.response().read()
@@ -379,6 +379,7 @@ class MusicBrainzClient(object):
         page = self.b.response().read()
         if "Release information" not in page:
             raise Exception('unable to post edit')
+        return True
 
     def edit_release_tracklisting(self, entity_id, mediums, edit_note=u'', auto=False):
         """
@@ -440,14 +441,14 @@ class MusicBrainzClient(object):
             raise Exception('unable to post edit')
 
     def set_release_script(self, entity_id, old_script_id, new_script_id, edit_note, auto=False):
-        self._edit_release_information(entity_id, {"script_id": [[str(old_script_id)],[str(new_script_id)]]}, edit_note, auto)
+        return self._edit_release_information(entity_id, {"script_id": [[str(old_script_id)],[str(new_script_id)]]}, edit_note, auto)
 
     def set_release_language(self, entity_id, old_language_id, new_language_id, edit_note, auto=False):
-        self._edit_release_information(entity_id, {"language_id": [[str(old_language_id)],[str(new_language_id)]]}, edit_note, auto)
+        return self._edit_release_information(entity_id, {"language_id": [[str(old_language_id)],[str(new_language_id)]]}, edit_note, auto)
 
     def set_release_packaging(self, entity_id, old_packaging_id, new_packaging_id, edit_note, auto=False):
         old_packaging = [str(old_packaging_id)] if old_packaging_id is not None else None
-        self._edit_release_information(entity_id, {"packaging_id": [old_packaging ,[str(new_packaging_id)]]}, edit_note, auto)
+        return self._edit_release_information(entity_id, {"packaging_id": [old_packaging ,[str(new_packaging_id)]]}, edit_note, auto)
 
     def set_release_medium_format(self, entity_id, medium_number, old_format_id, new_format_id, edit_note, auto=False):
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
