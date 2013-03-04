@@ -56,17 +56,19 @@ def pretty_size(size):
         else:
             return "%s %sB" % (round(size/float(lim/2**10),1), suf)
 
+symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
+            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
+
 def scan_barcode(img):
     gray = img.convert('L')
     w, h = gray.size
 
     scanner = zbar.ImageScanner()
+    for type in symtypes:
+        scanner.set_config(type, zbar.Config.ENABLE, 1)
     zimg = zbar.Image(w, h, 'Y800', gray.tostring())
     scanner.scan(zimg)
     return zimg.symbols
-
-symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
-            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
 
 def fetch_barcodes(release, art_id):
     url = '%s/release/%s/%d.jpg' % (CAA_SITE, release.gid, art_id)
@@ -147,7 +149,7 @@ def bot_main():
         FROM release r
         JOIN cover_art ca ON (ca.release=r.id)
         JOIN cover_art_type cat on (cat.id=ca.id)
-        WHERE r.barcode is null AND cat.type_id=2 /*Back*/
+        WHERE r.barcode is null AND cat.type_id IN (2,5) /*Back,Obi*/
           AND (r.packaging is null OR r.packaging != 7 /*None*/)
           AND exists (SELECT * FROM medium m
                       WHERE m.release=r.id
