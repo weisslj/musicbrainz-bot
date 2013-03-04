@@ -164,24 +164,50 @@ def upload_covers(covers, mbid):
 
         done(upload_id)
 
-def handle_acc_covers(url, mbid):
-    mburl = '%s/release/%s/cover-art' % (cfg.MB_SITE, mbid)
-    covers = fetch_covers(url)
-    print "Uploading to", mburl
-    upload_covers(covers, mbid)
+def handle_acc_covers(acc_url, mbids):
+    print "Downloading from", acc_url
+    covers = fetch_covers(acc_url)
 
-    print "Done!", mburl
+    for mbid in mbids:
+        mburl = '%s/release/%s/cover-art' % (cfg.MB_SITE, mbid)
+        print "Uploading to", mburl
+        upload_covers(covers, mbid)
+        print "Done!", mburl
+
+def print_help():
+    print "Usage: %s allcdcovers_url [mbid ...]" % sys.argv[0]
+    print "MBIDs can be given as musicbrainz.org URLs, will be automatically parsed."
+    print "Example: %s http://www.allcdcovers.com/show/160217/boards_of_canada_twoism_2002_retail_cd/front https://musicbrainz.org/release/a95dbc6e-3066-46ea-91ed-cfb9539f0c7c" % sys.argv[0]
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
-    init()
-    url = sys.argv[1]
-    mbid = re_find1(uuid_rec, sys.argv[2])
+    if len(sys.argv) <= 1 or '--help' in sys.argv or '-h' in sys.argv:
+        sys.exit(1)
 
-    handle_acc_covers(url, mbid)
+    acc_url = None
+    mbids = []
+    for arg in sys.argv[1:]:
+        if uuid_rec.findall(arg):
+            mbids.append(re_find1(uuid_rec, sys.argv[2]))
+
+        elif acc_url_rec.findall(arg):
+            if acc_url is not None:
+                print "Specify only one allcdcovers.com URL"
+                sys.exit(1)
+            acc_url = arg
+
+        else:
+            print "Unrecognized argument:", arg
+            print
+            print_help()
+            sys.exit(1)
+
+    init()
+    handle_acc_covers(acc_url, mbids)
 
 def init():
     global mb, br
+    print "Initializing..."
     mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
     br = mechanize.Browser()
