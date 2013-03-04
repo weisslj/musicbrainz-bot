@@ -1,10 +1,8 @@
 #!/usr/bin/env python2
-# http://www.allcdcovers.com/show/63158/acid_drinkers_vile_vicious_vision_1994_retail_cd/front
 
 import sys
 import os
 import re
-import pprint
 from hashlib import sha1
 import mechanize
 
@@ -19,7 +17,7 @@ try:
         import zbar
     except ImportError:
         zbar = None
-        print "Warning: Cannot import zbar. Install python-zbar for bar scanning functionality"
+        print "Warning: Cannot import zbar. Install python-zbar for barcode scanning"
 except ImportError:
     Image = None
     print "Warning: Cannot import PIL. Install python-imaging for image dimension information"
@@ -71,12 +69,10 @@ ERR_SHA1 = '5dd9c1734067f7a6ee8791961130b52f804211ce'
 def download_cover(release_id, typ, resp=None, data=None):
     href, fragment, dtyp = re_find1(acc_download_re % re.escape(release_id), data)
 
+    assert typ == dtyp, "%s != %s" % (typ, dtyp)
+
     filename = os.path.join(ACC_CACHE, "[AllCDCovers]_%s.jpg" % fragment)
     referrer = resp.geturl()
-
-    #print dtyp, href
-    #print 'Referrer', referrer
-    assert typ == dtyp, "%s != %s" % (typ, dtyp)
 
     cov = {
        'referrer': referrer,
@@ -104,7 +100,6 @@ def download_cover(release_id, typ, resp=None, data=None):
         raise Exception("Got error image back! URL is stale? %r" % href)
 
     with open(filename, 'wb') as f:
-        #print "Saving %s as %r" % (typ, filename)
         f.write(data)
 
     return cov
@@ -116,12 +111,9 @@ def fetch_covers(base_url):
     data = resp.read()
 
     pages = list(set(re.findall(acc_show_re % re.escape(release_id), data)))
-    #pprint.pprint(pages)
-    #print 'Pages', pages
     covers = []
 
     cov = download_cover(release_id, typ, resp, data)
-    #pprint.pprint(cov)
     covers.append(cov)
 
     for href, typ in pages:
@@ -131,7 +123,6 @@ def fetch_covers(base_url):
         resp = br.open(href)
         data = resp.read()
         cov = download_cover(release_id, typ, resp, data)
-        #pprint.pprint(cov)
         covers.append(cov)
 
     return covers
@@ -217,11 +208,6 @@ def upload_covers(covers, mbid):
             types = ['booklet']
         elif cov['type'] == 'inlay':
             types = ['tray']
-            # AllCDCovers types are sometimes confused. If 'inside' cover exists then 'inlay' refers to Tray, otherwise Booklet
-            #if any(c['type'] == 'inside' for c in covers):
-            #    types = ['tray']
-            #else:
-            #    types = ['booklet']
         else:
             types = [cov['type']]
 
@@ -234,7 +220,7 @@ def upload_covers(covers, mbid):
         note += "\n" + cov['referrer']
 
         print "Uploading %r (%s) from %r" % (types, cov['size_pretty'], cov['file'])
-        # Doesn't work: position = '0' if cov['type'] == 'front' else
+        # Doesn't work: position = '0' if cov['type'] == 'front' else None
         # ValueError: control 'add-cover-art.position' is readonly
         mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False, False)
 
@@ -268,7 +254,7 @@ def bot_main():
     mbids = []
     for arg in sys.argv[1:]:
         if uuid_rec.findall(arg):
-            mbids.append(re_find1(uuid_rec, sys.argv[2]))
+            mbids.append(re_find1(uuid_rec, arg))
 
         elif acc_url_rec.findall(arg):
             if acc_url is not None:
