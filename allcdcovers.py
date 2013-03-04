@@ -138,11 +138,16 @@ def pretty_size(size):
         else:
             return "%s %sB" % (round(size/float(lim/2**10),1), suf)
 
+symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
+            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
+
 def scan_barcode(img):
     gray = img.convert('L')
     w, h = gray.size
 
     scanner = zbar.ImageScanner()
+    for type in symtypes:
+        scanner.set_config(type, zbar.Config.ENABLE, 1)
     zimg = zbar.Image(w, h, 'Y800', gray.tostring())
     scanner.scan(zimg)
 
