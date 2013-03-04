@@ -12,7 +12,7 @@ from editing import MusicBrainzClient
 import utils
 import config as cfg
 
-ACC_CACHE = './acc-cache'
+ACC_CACHE = 'acc-cache'
 
 utils.monkeypatch_mechanize()
 
@@ -28,6 +28,21 @@ def re_find1(regexp, string):
         else:
             raise AssertionError("Expression %s matched %d times: %r" % (pat, len(m), string))
     return m[0]
+
+# Progress file - prevent duplicate uplpoads
+DBFILE = os.path.join(ACC_CACHE, 'progress.db')
+try:
+    statefile = open(DBFILE, 'r+')
+    state = set(x.strip() for x in statefile.readlines())
+except IOError: # Not found? Try writing
+    statefile = open(DBFILE, 'w')
+    state = set()
+
+def done(line):
+    assert line not in state
+    statefile.write("%s\n" % line)
+    statefile.flush()
+    state.add(line)
 
 acc_url_rec = re.compile('/show/([0-9]+)/[^/-]+/([a-z]+)')
 # <div class="thumbnail"><a href="/show/63158/acid_drinkers_vile_vicious_vision_1994_retail_cd/back"><img alt="Back" [...]
@@ -45,7 +60,7 @@ def download_cover(release_id, typ, resp=None, data=None):
     filename = os.path.join(ACC_CACHE, "[AllCDCovers]_%s.jpg" % fragment)
     referrer = resp.geturl()
 
-    print dtyp, href
+    #print dtyp, href
     #print 'Referrer', referrer
     assert typ == dtyp, "%s != %s" % (typ, dtyp)
 
@@ -56,7 +71,7 @@ def download_cover(release_id, typ, resp=None, data=None):
        'title': br.title(),
     }
     if os.path.exists(filename):
-        print "Skipping, file %r already exists" % filename
+        print "SKIP download, already done: %r" % filename
         cov['cached'] = True
         return cov
 
@@ -67,6 +82,7 @@ def download_cover(release_id, typ, resp=None, data=None):
         resp.close()
         raise Exception("Got response filename %r, URL is stale? %r" % (tmp_name, href))
     #filename = os.path.join(ACC_CACHE, tmp_name)
+    print "Downloading to %r" % (filename)
 
     data = resp.read()
     resp.close()
@@ -74,7 +90,7 @@ def download_cover(release_id, typ, resp=None, data=None):
         raise Exception("Got error image back! URL is stale? %r" % href)
 
     with open(filename, 'wb') as f:
-        print "Saving %s as %r" % (typ, filename)
+        #print "Saving %s as %r" % (typ, filename)
         f.write(data)
 
     return cov
@@ -86,13 +102,12 @@ def fetch_covers(base_url):
     data = resp.read()
 
     pages = list(set(re.findall(acc_show_re % re.escape(release_id), data)))
-    pprint.pprint(pages)
+    #pprint.pprint(pages)
     #print 'Pages', pages
-    assert pages
-
     covers = []
 
     cov = download_cover(release_id, typ, resp, data)
+    #pprint.pprint(cov)
     covers.append(cov)
 
     for href, typ in pages:
@@ -102,39 +117,60 @@ def fetch_covers(base_url):
         resp = br.open(href)
         data = resp.read()
         cov = download_cover(release_id, typ, resp, data)
+        #pprint.pprint(cov)
         covers.append(cov)
 
     return covers
 
+ordering = {
+    'front': 0,
+    'back': 1,
+    'inside': 2,
+    'inlay': 3,
+    'cd': 4,
+}
+def cov_order(cov):
+    return ordering[cov['type']]
+
 COMMENT = "AllCDCovers"
 def upload_covers(covers, mbid):
-    for cov in covers:
+    for cov in sorted(covers, key=cov_order):
+        upload_id = "%s %s" % (mbid, cov['referrer'])
+        if upload_id in state:
+            print "SKIP upload, already done: %r" % cov['file']
+            continue
+
         # type can be: front, back, inside, inlay, cd
         if cov['type'] == 'cd':
             types = ['medium']
         elif cov['type'] == 'inside':
             types = ['booklet']
         elif cov['type'] == 'inlay':
+            types = ['tray']
             # AllCDCovers types are sometimes confused. If 'inside' cover exists then 'inlay' refers to Tray, otherwise Booklet
-            if any(c['type'] == 'inside' for c in covers):
-                types = ['tray']
-            else:
-                types = ['booklet']
+            #if any(c['type'] == 'inside' for c in covers):
+            #    types = ['tray']
+            #else:
+            #    types = ['booklet']
         else:
             types = [cov['type']]
 
-        note = "\"%s\"\n%s" % (cov['title'], cov['referrer'])
+        note = "\"%(title)s\"\nType: %(type)s\n%(referrer)s" % (cov)
 
-        print "Uploading %s as %s" % (cov['file'], types)
-        mb.add_cover_art(mbid, cov['file'], types, 0 if cov['type'] == 'front' else None, COMMENT, note, False, False)
+        print "Uploading %r from %r" % (types, cov['file'])
+        # Doesn't work: position = '0' if cov['type'] == 'front' else
+        # ValueError: control 'add-cover-art.position' is readonly
+        mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False, False)
+
+        done(upload_id)
 
 def handle_acc_covers(url, mbid):
+    mburl = '%s/release/%s/cover-art' % (cfg.MB_SITE, mbid)
     covers = fetch_covers(url)
-    pprint.pprint(covers)
+    print "Uploading to", mburl
     upload_covers(covers, mbid)
 
-    print
-    print "Done! %srelease/%s/cover-art" % (cfg.MB_SITE, mbid)
+    print "Done!", mburl
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
