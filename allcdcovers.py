@@ -44,33 +44,40 @@ def download_cover(release_id, typ, resp=None, data=None):
 
     filename = os.path.join(ACC_CACHE, "[AllCDCovers]_%s.jpg" % fragment)
     referrer = resp.geturl()
-    if os.path.exists(filename):
-        print "Skipping, file %r already exists" % filename
-        return {'referrer': referrer, 'type': typ, 'file': filename, 'cached': True}
 
     print dtyp, href
-    print 'Referrer', referrer
+    #print 'Referrer', referrer
     assert typ == dtyp, "%s != %s" % (typ, dtyp)
+
+    cov = {
+       'referrer': referrer,
+       'type': typ,
+       'file': filename,
+       'title': br.title(),
+    }
+    if os.path.exists(filename):
+        print "Skipping, file %r already exists" % filename
+        cov['cached'] = True
+        return cov
 
     resp = br.open_novisit(href)
     disp = resp.info().getheader('Content-Disposition')
-    filename = re_find1(disposition_re, disp)
-    if filename == 'allcdcovers.jpg':
+    tmp_name = re_find1(disposition_re, disp)
+    if tmp_name == 'allcdcovers.jpg':
         resp.close()
-        raise Exception("Got response filename %r, URL is stale? %r" % (filename, href))
+        raise Exception("Got response filename %r, URL is stale? %r" % (tmp_name, href))
+    #filename = os.path.join(ACC_CACHE, tmp_name)
 
-    filename = os.path.join(ACC_CACHE, filename)
-
-    print "Saving as %r" % filename
     data = resp.read()
     resp.close()
     if sha1(data).hexdigest() == ERR_SHA1:
         raise Exception("Got error image back! URL is stale? %r" % href)
 
     with open(filename, 'wb') as f:
+        print "Saving %s as %r" % (typ, filename)
         f.write(data)
 
-    return {'referrer': referrer, 'type': typ, 'file': filename}
+    return cov
 
 def fetch_covers(base_url):
     release_id, typ = re_find1(acc_url_rec, base_url)
@@ -104,23 +111,30 @@ def upload_covers(covers, mbid):
     for cov in covers:
         # type can be: front, back, inside, inlay, cd
         if cov['type'] == 'cd':
-            typ = ['medium']
+            types = ['medium']
+        elif cov['type'] == 'inside':
+            types = ['booklet']
         elif cov['type'] == 'inlay':
             # AllCDCovers types are sometimes confused. If 'inside' cover exists then 'inlay' refers to Tray, otherwise Booklet
             if any(c['type'] == 'inside' for c in covers):
-                typ = 'tray'
+                types = ['tray']
             else:
-                typ = 'boolket'
+                types = ['booklet']
         else:
-            typ = [cov['type']]
+            types = [cov['type']]
 
-        print "Uploading %s as %s" % (cov['file'], typ)
-        mb.add_cover_art(mbid, cov['file'], typ, 0 if cov['type'] == 'front' else None, COMMENT, cov['referrer'], False, False)
+        note = "\"%s\"\n%s" % (cov['title'], cov['referrer'])
+
+        print "Uploading %s as %s" % (cov['file'], types)
+        mb.add_cover_art(mbid, cov['file'], types, 0 if cov['type'] == 'front' else None, COMMENT, note, False, False)
 
 def handle_acc_covers(url, mbid):
     covers = fetch_covers(url)
     pprint.pprint(covers)
     upload_covers(covers, mbid)
+
+    print
+    print "Done! %srelease/%s/cover-art" % (cfg.MB_SITE, mbid)
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
