@@ -12,6 +12,12 @@ from editing import MusicBrainzClient
 import utils
 import config as cfg
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+    print "Warning: Cannot import PIL, continuing without"
+
 ACC_CACHE = 'acc-cache'
 
 utils.monkeypatch_mechanize()
@@ -43,6 +49,8 @@ def done(line):
     statefile.write("%s\n" % line)
     statefile.flush()
     state.add(line)
+
+#### DOWNLOADING
 
 acc_url_rec = re.compile('/show/([0-9]+)/[^/-]+/([a-z]+)')
 # <div class="thumbnail"><a href="/show/63158/acid_drinkers_vile_vicious_vision_1994_retail_cd/back"><img alt="Back" [...]
@@ -122,6 +130,39 @@ def fetch_covers(base_url):
 
     return covers
 
+#### IMAGE PROCESSING
+
+def pretty_size(size):
+    # http://www.dzone.com/snippets/filesize-nice-units
+    suffixes = [('',2**10), ('k',2**20), ('M',2**30), ('G',2**40), ('T',2**50)]
+    for suf, lim in suffixes:
+        if size > lim:
+            continue
+        else:
+            return "%s %sB" % (round(size/float(lim/2**10),1), suf)
+
+def annotate_image(filename):
+    """Returns image information as dict"""
+    data = {}
+    data['size_bytes'] = bytesize = os.stat(filename).st_size
+    data['size_pretty'] = pretty_size(bytesize)
+
+    if Image:
+        img = Image.open(filename)
+        try:
+            # Verify image - makes sure we don't upload corrupt junk
+            img.tostring()
+        except IOError as err:
+            print "Error in image %r: %s" % (filename, err)
+            sys.exit(1)
+        data['dims'] = "%dx%d" % img.size
+    else:
+        data['dims'] = "(unknown)"
+
+    return data
+
+#### UPLOADING
+
 ordering = {
     'front': 0,
     'back': 1,
@@ -155,7 +196,7 @@ def upload_covers(covers, mbid):
         else:
             types = [cov['type']]
 
-        note = "\"%(title)s\"\nType: %(type)s\n%(referrer)s" % (cov)
+        note = "\"%(title)s\"\nType: %(type)s Size: %(size_pretty)s (%(size_bytes)s bytes) Dimensions: %(dims)s\n%(referrer)s" % (cov)
 
         print "Uploading %r from %r" % (types, cov['file'])
         # Doesn't work: position = '0' if cov['type'] == 'front' else
@@ -167,6 +208,10 @@ def upload_covers(covers, mbid):
 def handle_acc_covers(acc_url, mbids):
     print "Downloading from", acc_url
     covers = fetch_covers(acc_url)
+
+    for cov in covers:
+        data = annotate_image(cov['file'])
+        cov.update(data)
 
     for mbid in mbids:
         mburl = '%s/release/%s/cover-art' % (cfg.MB_SITE, mbid)
