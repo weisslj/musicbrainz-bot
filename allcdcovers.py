@@ -14,9 +14,15 @@ import config as cfg
 
 try:
     from PIL import Image
+
+    try:
+        import zbar
+    except ImportError:
+        zbar = None
+        print "Warning: Cannot import zbar. Install python-zbar for bar scanning functionality"
 except ImportError:
     Image = None
-    print "Warning: Cannot import PIL, continuing without"
+    print "Warning: Cannot import PIL. Install python-imaging for image dimension information"
 
 ACC_CACHE = 'acc-cache'
 
@@ -141,6 +147,20 @@ def pretty_size(size):
         else:
             return "%s %sB" % (round(size/float(lim/2**10),1), suf)
 
+def scan_barcode(img):
+    gray = img.convert('L')
+    w, h = gray.size
+
+    scanner = zbar.ImageScanner()
+    zimg = zbar.Image(w, h, 'Y800', gray.tostring())
+    scanner.scan(zimg)
+
+    codes = []
+    for sym in zimg:
+        codes.append("%s: %s" % (sym.type, sym.data))
+
+    return ", ".join(codes)
+
 def annotate_image(filename):
     """Returns image information as dict"""
     data = {}
@@ -150,14 +170,23 @@ def annotate_image(filename):
     if Image:
         img = Image.open(filename)
         try:
-            # Verify image - makes sure we don't upload corrupt junk
-            img.tostring()
+            if zbar:
+                data['barcode'] = barcode = scan_barcode(img)
+                if barcode:
+                    print "Barcode: %s (%r)" % (barcode, filename)
+
+            else:
+                data['barcode'] = None
+                # Verify image - makes sure we don't upload corrupt junk
+                img.tostring()
+
         except IOError as err:
             print "Error in image %r: %s" % (filename, err)
             sys.exit(1)
         data['dims'] = "%dx%d" % img.size
     else:
-        data['dims'] = "(unknown)"
+        data['dims'] = None
+        data['barcode'] = None
 
     return data
 
@@ -196,9 +225,15 @@ def upload_covers(covers, mbid):
         else:
             types = [cov['type']]
 
-        note = "\"%(title)s\"\nType: %(type)s Size: %(size_pretty)s (%(size_bytes)s bytes) Dimensions: %(dims)s\n%(referrer)s" % (cov)
+        note = "\"%(title)s\"\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
+        if cov['dims']:
+            note += "Dimensions: " + cov['dims']
+            if cov['barcode']:
+                note += " / Barcode: " + cov['barcode']
 
-        print "Uploading %r from %r" % (types, cov['file'])
+        note += "\n" + cov['referrer']
+
+        print "Uploading %r (%s) from %r" % (types, cov['size_pretty'], cov['file'])
         # Doesn't work: position = '0' if cov['type'] == 'front' else
         # ValueError: control 'add-cover-art.position' is readonly
         mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False, False)
