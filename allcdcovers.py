@@ -56,12 +56,12 @@ def done(line):
 
 #### DOWNLOADING
 
-acc_url_rec = re.compile('/show/([0-9]+)/[^/-]+/([a-z]+)')
+acc_url_rec = re.compile('/show/([0-9]+)/[^/-]+/([a-z0-9_]+)')
 # <div class="thumbnail"><a href="/show/63158/acid_drinkers_vile_vicious_vision_1994_retail_cd/back"><img alt="Back" [...]
 #acc_show_re = '"(/show/%s/[^/-]+/(front|back|inside|inlay|cd))"'
-acc_show_re = '"(/show/%s/[^/-]+/([a-z]+))"'
+acc_show_re = '"(/show/%s/[^/-]+/([a-z0-9_]+))"'
 # <a href="/download/97e2d4d994aa7ca42da524ca333ff8d9/263803/8c4a7a3a4515ad214846617c90262367/51326581/acid_drinkers_vile_vicious_vision_1997_retail_cd-front">
-acc_download_re = '"(/download/[0-9a-f]{32}/%s/[0-9a-f]{32}/[0-9a-f]+/([^/-]+-(front|back|inside|inlay|cd)))"'
+acc_download_re = '"(/download/[0-9a-f]{32}/%s/[0-9a-f]{32}/[0-9a-f]+/([^/-]+-([a-z0-9_]+)))"'
 # Content-Disposition: inline; filename=allcdcovers.jpg
 disposition_re = '(?:; ?|^)filename=((?:[^/]+).jpg)'
 
@@ -191,7 +191,8 @@ ordering = {
     'cd': 4,
 }
 def cov_order(cov):
-    return ordering[cov['type']]
+    typ = cov['type']
+    return ordering[typ.split('_',1)[0]], typ
 
 COMMENT = "AllCDCovers"
 def upload_covers(covers, mbid):
@@ -201,15 +202,16 @@ def upload_covers(covers, mbid):
             print "SKIP upload, already done: %r" % cov['file']
             continue
 
-        # type can be: front, back, inside, inlay, cd
-        if cov['type'] == 'cd':
+        typ = cov['type']
+        # type can be: front, back, inside, inlay, cd, cd_2
+        if typ.startswith('cd'):
             types = ['medium']
-        elif cov['type'] == 'inside':
+        elif typ == 'inside':
             types = ['booklet']
-        elif cov['type'] == 'inlay':
+        elif typ == 'inlay':
             types = ['tray']
         else:
-            types = [cov['type']]
+            types = [typ]
 
         note = "\"%(title)s\"\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
         if cov['dims']:
