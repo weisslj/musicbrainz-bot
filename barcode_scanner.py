@@ -70,12 +70,13 @@ def scan_barcode(img):
     scanner.scan(zimg)
     return zimg.symbols
 
-def fetch_barcodes(release, art_id):
+def fetch_image(release, art_id):
     url = '%s/release/%s/%d.jpg' % (CAA_SITE, release.gid, art_id)
     filename = os.path.join(CAA_CACHE, '%d.jpg') % art_id
 
     if os.path.exists(filename):
         f = open(filename, 'rb')
+        print "SKIP fetching %s" % url
     else:
         resp = opener.open(url)
         info = resp.info()
@@ -85,13 +86,20 @@ def fetch_barcodes(release, art_id):
 
         print "Downloading %s (%s)" % (url, pretty_size(size))
 
-        f = open(filename, 'wb+')
-        f.write(resp.read())
+        try:
+            f = open(filename, 'wb+')
+            f.write(resp.read())
+            f.flush()
+        except BaseException as e:
+            # If writing failed, try to remove the file
+            try:
+                os.remove(filename)
+            except:
+                pass
+            raise e
         f.seek(0)
 
-    img = Image.open(f)
-    print "Image %s (%dx%d)" % (filename, img.size[0], img.size[1])
-    return scan_barcode(img), url
+    return f, url
 
 def handle_release(release):
     # May have multiple cover images with the same barcode
@@ -99,13 +107,20 @@ def handle_release(release):
     note = ""
     txn_ids = []
 
-    for art_id in release.ids:
+    for art_id, typ in zip(release.ids, release.types):
         txn_id = "%s %s" % (release.gid, art_id)
         if txn_id in state:
             print "SKIP %s" % txn_id
             continue
 
-        symbols, url = fetch_barcodes(release, art_id)
+        f, url = fetch_image(release, art_id)
+        try:
+            img = Image.open(f)
+            symbols = scan_barcode(img)
+        except IOError as err:
+            print "Error opening URL %s %s" % (url, err)
+            txn_ids.append("%s # Error: %s" % (txn_id, err))
+            continue
 
         if not symbols:
             txn_ids.append("%s # No barcode" % txn_id)
@@ -114,7 +129,8 @@ def handle_release(release):
             txn_ids.append("%s # %s: %s" % (txn_id, sym.type, sym.data))
             if sym.type in symtypes:
                 codes.add(sym.data)
-                note += "Recognized %s: %s from cover image %s\n" % (sym.type, sym.data, url)
+                note += ("Recognized %s: %s from %s cover image %s\n" %
+                         (sym.type, sym.data, art_type_map[typ], url))
 
     if not txn_ids:
         # Nothing to do
@@ -145,7 +161,7 @@ def bot_main():
     cur = db.cursor(cursor_factory=NamedTupleCursor)
 
     cur.execute("""
-        SELECT r.id, r.gid, array_agg(ca.id) as ids
+        SELECT r.id, r.gid, array_agg(ca.id) as ids, array_agg(cat.type_id) as types
         FROM release r
         JOIN cover_art ca ON (ca.release=r.id)
         JOIN cover_art_type cat on (cat.id=ca.id)
@@ -162,11 +178,14 @@ def bot_main():
         handle_release(release)
 
 def init():
-    global db, mb
+    global db, mb, art_type_map
     print "Initializing..."
     mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
     db = psycopg2.connect(cfg.MB_DB)
+    cur = db.cursor()
+    cur.execute("SELECT id, name FROM art_type")
+    art_type_map = dict(cur.fetchall())
 
 if __name__ == '__main__':
     bot_main()
