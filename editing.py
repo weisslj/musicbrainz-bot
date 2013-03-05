@@ -10,7 +10,6 @@ import json
 import config as cfg
 import hashlib
 import base64
-import socket
 from PIL import Image
 from utils import structureToString, out
 from datetime import datetime
@@ -217,6 +216,41 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
+        if "Thank you, your edit has been" not in page:
+            if 'any changes to the data already present' not in page:
+                raise Exception('unable to post edit')
+            else:
+                return False
+        return True
+
+    def edit_artist_credit(self, entity_id, credit_id, ids, names, join_phrases, edit_note):
+        assert len(ids) == len(names) == len(join_phrases)+1
+        join_phrases.append('')
+
+        self.b.open(self.url("/artist/%s/credit/%d/edit" % (entity_id, int(credit_id))))
+        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+
+        for i in range(len(ids)):
+            for field in ['artist.id', 'artist.name', 'name', 'join_phrase']:
+                k = "split-artist.artist_credit.names.%d.%s" % (i, field)
+                try:
+                    self.b.form.find_control(k).readonly = False
+                except mechanize.ControlNotFoundError:
+                    self.b.form.new_control('text', k, {})
+        self.b.fixup()
+
+        for i, aid in enumerate(ids):
+            self.b["split-artist.artist_credit.names.%d.artist.id" % i] = str(int(aid))
+        # Form also has "split-artist.artist_credit.names.%d.artist.name", but it is not required
+        for i, name in enumerate(names):
+            self.b["split-artist.artist_credit.names.%d.name" % i] = name.encode('utf-8')
+        for i, join in enumerate(join_phrases):
+            self.b["split-artist.artist_credit.names.%d.join_phrase" % i] = join.encode('utf-8')
+
+        self.b["split-artist.edit_note"] = edit_note.encode('utf-8')
+        self.b.submit()
+        page = self.b.response().read()
+
         if "Thank you, your edit has been" not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')

@@ -4,31 +4,21 @@
 
 CONFIRM = True
 DRY_RUN = False
-COOKIE = 'musicbrainz_server_session=WRITE COOKIE HERE'
 
 #### Bot code
 
 import re
 import sys
-import urllib2
-import urllib
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
 
+from editing import MusicBrainzClient
 import config
 
-#### ...
+#### Progress file
 
-db = psycopg2.connect(config.MB_DB)
-
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
-
-# Progress file
 statefile = open('split_artists.db', 'r+')
 state = set(x.strip() for x in statefile.readlines())
-
-####
 
 def done(gid):
     if not DRY_RUN:
@@ -36,48 +26,7 @@ def done(gid):
         statefile.flush()
     state.add(gid)
 
-def encode_dict(d):
-    l = []
-    for k, v in sorted(d.items()):
-        print "  %s=%r" % (k, v)
-        v = unicode(v).encode('utf8')
-        l.append((k, v))
-    print
-    return urllib.urlencode(l)
-
-USER_AGENT = config.WWW_USER_AGENT or 'brainybot (+https://musicbrainz.org/user/intgr_bot)'
-def do_request(url, dic):
-    print "POST", url
-
-    rawdata = encode_dict(dic)
-    if DRY_RUN:
-        return
-    req = urllib2.Request(config.MB_SITE + url, data=rawdata, headers={'Cookie': COOKIE, 'User-Agent': USER_AGENT})
-    resp = urllib2.urlopen(req)
-    code = resp.getcode()
-    data = resp.read()
-    open('/tmp/%s.html' % url.replace('/', '_'), 'wb').write(data)
-    assert code == 200
-    assert "Thank you, your edit has been entered into the edit queue for peer review." in data
-
-def do_del_relationship(rel_id, comment):
-    postdata = {'confirm.edit_note': comment}
-    do_request('/edit/relationship/delete?type1=artist&type0=artist&id=%d' % rel_id, postdata)
-
-def construct_post(arts, names, joins, comment):
-    assert len(arts) == len(names) == len(joins)+1
-    joins.append('')
-
-    postdata = {}
-    for i, (art, name, join) in enumerate(zip(arts, names, joins)):
-        key = 'split-artist.artist_credit.names.%d.' % i
-        postdata[key + 'name'] = name if art.name!=name else ""
-        postdata[key + 'artist.name'] = art.name
-        postdata[key + 'artist.id'] = art.id
-        postdata[key + 'join_phrase'] = join
-
-    postdata['split-artist.edit_note'] = comment
-    return postdata
+####
 
 def clean_link_phrase(phrase):
     return re.sub(r'\{[^}]+\}\s*', '', phrase).strip()
@@ -212,10 +161,9 @@ def handle_credit(src, cred, comment):
         print "  SKIP, artist has split personality disorder! (%s)" % " / ".join(art.description for art in arts)
         return None, None
 
-    # Will call do_request with these values
-    url = '/artist/%s/credit/%d/edit' % (src.gid, cred.id)
-    postdata = construct_post(arts, names, joins, comment.strip())
-    cred_tx = (url, postdata)
+    # Will call mb.edit_artist_credit with these values
+    # edit_artist_credit(entity_id, credit_id, ids, names, join_phrases, edit_note)
+    cred_tx = (src.gid, cred.id, [a.id for a in arts], names, joins, comment.strip())
 
     return cred_tx, del_rels
 
@@ -277,13 +225,13 @@ def handle_artist(src):
 
     # Complete all transactions
     for tx in cred_txs:
-        do_request(*tx)
+        mb.edit_artist_credit(*tx)
 
     # Only delete relationships if all credits were fixed
     if len(cred_txs) == cred_count:
         for rel in del_rels:
-            # Will call do_del_relationship with these values
-            do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid))
+            note = "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid)
+            mb.remove_relationship(rel.id, 'artist', 'artist', note)
 
     # Only delete relationships if all credits were renamed
     done(src.gid)
@@ -312,7 +260,7 @@ WHERE edits_pending=0
       FROM regexp_split_to_table(lower(an.name), %(re)s) c_name
       ) AND array_length(regexp_split_to_array(an.name, %(re)s), 1) > 1
 
-  -- l_artist_label is handled differently in Python code
+  -- l_artist_artist is handled differently in Python code
   AND not exists(SELECT * FROM l_artist_label         WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_recording     WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_release       WHERE entity0=a.id)
@@ -322,21 +270,36 @@ WHERE edits_pending=0
 ORDER BY ac.ref_count, r_count
 """
 
-def run_bot(filter=None):
+def bot_main(filter=None):
+    init_db()
+
     cur = db.cursor(cursor_factory=NamedTupleCursor)
     args = {'re': split_re, 'filter': filter}
     print cur.mogrify(query, args)
     cur.execute(query, args)
+
     print "TOTAL found", cur.rowcount
+    init_mb()
     for art in cur:
         if art.gid in state:
             print "Skipping", art.gid
         else:
             handle_artist(art)
 
+def init_mb():
+    global mb
+    print "Logging in..."
+    mb = MusicBrainzClient(config.MB_USERNAME, config.MB_PASSWORD, config.MB_SITE)
+
+def init_db():
+    global db
+    db = psycopg2.connect(config.MB_DB)
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODE, db)
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY, db)
+
 if __name__=='__main__':
     if len(sys.argv) > 1:
         filter = sys.argv[1].decode('utf8')
     else:
         filter = None
-    run_bot(filter)
+    bot_main(filter)
