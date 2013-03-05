@@ -157,8 +157,13 @@ def handle_release(release):
             done(txn_id)
 
 def bot_main():
-    init()
+    print "Initializing..."
+    init_db()
     cur = db.cursor(cursor_factory=NamedTupleCursor)
+
+    skip_ids = [line.split(' ',2)[1] for line in state if ' ' in line]
+    # Format as PostgreSQL array literal
+    skip_ids = '{%s}' % ','.join(skip_ids)
 
     cur.execute("""
         SELECT r.id, r.gid, array_agg(ca.id) as ids, array_agg(cat.type_id) as types
@@ -170,22 +175,30 @@ def bot_main():
           AND exists (SELECT * FROM medium m
                       WHERE m.release=r.id
                         AND (m.format is null OR m.format NOT IN (12,26,27) /*Digital Media etc*/))
-          --AND ca.id = 1251394122
+          AND ca.id != all(%s)
         GROUP BY r.id
-        """)
+        """, [skip_ids])
+
+    if not cur.rowcount:
+        print "No new images to scan"
+        return
+
+    init_mb()
 
     for release in cur:
         handle_release(release)
 
-def init():
-    global db, mb, art_type_map
-    print "Initializing..."
-    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+def init_db():
+    global db, art_type_map
 
     db = psycopg2.connect(cfg.MB_DB)
     cur = db.cursor()
     cur.execute("SELECT id, name FROM art_type")
     art_type_map = dict(cur.fetchall())
+
+def init_mb():
+    global mb
+    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 if __name__ == '__main__':
     bot_main()
