@@ -218,6 +218,7 @@ def bot_main():
           AND exists (SELECT * FROM medium m
                       WHERE m.release=r.id
                         AND (m.format is null OR m.format NOT IN (12,26,27) /*Digital Media etc*/))
+          AND ca.edits_pending = 0
           AND ca.id != all(%s)
         GROUP BY r.id
         """, [skip_ids])
