@@ -4,6 +4,21 @@
 
 CONFIRM = True
 DRY_RUN = False
+REFRESH_INTERVAL = '1 week'
+
+"""
+-- Database schema
+CREATE SCHEMA mbbot;
+
+CREATE TABLE mbbot.split_artists_history(
+    artist       int            not null,
+    changed      bool           not null,
+    bot_version  smallint       not null,
+    time         timestamptz    not null default now()
+);
+CREATE INDEX split_artists_history_artist_bot_version_time_idx
+    ON mbbot.split_artists_history(artist, bot_version, time);
+"""
 
 #### Bot code
 
@@ -14,17 +29,6 @@ from psycopg2.extras import NamedTupleCursor
 
 from editing import MusicBrainzClient
 import config
-
-#### Progress file
-
-statefile = open('split_artists.db', 'r+')
-state = set(x.strip() for x in statefile.readlines())
-
-def done(gid):
-    if not DRY_RUN:
-        statefile.write("%s\n" % gid)
-        statefile.flush()
-    state.add(gid)
 
 ####
 
@@ -217,11 +221,22 @@ def handle_artist(src):
             assert last_rels == del_rels
 
     if not cred_txs:
-        return
+        # Found no good matches
+        return False
+
+    # Make sure an edit wasn't already submitted.
+    cur.execute("SELECT EXISTS(SELECT * FROM "+config.BOT_SCHEMA_DB+".split_artists_history"+
+                " WHERE artist=%s AND changed=true)",
+                [src.id])
+
+    changed = cur.fetchone()[0]
+    if changed:
+        print "SKIP, artist has already been edited"
+        return None
 
     if CONFIRM:
         if not prompt("Submit? [y/n]"):
-            return
+            return None
 
     # Complete all transactions
     for tx in cred_txs:
@@ -233,8 +248,7 @@ def handle_artist(src):
             note = "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid)
             mb.remove_relationship(rel.id, 'artist', 'artist', note)
 
-    # Only delete relationships if all credits were renamed
-    done(src.gid)
+    return True
 
 split_re = ur"((?:(?:\s*,\s*|\s+)(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
 split_rec = re.compile(split_re)
@@ -251,15 +265,21 @@ JOIN artist_credit_name acn ON (a.id=acn.artist)
     JOIN artist_credit ac ON (acn.artist_credit=ac.id)
     --JOIN artist_name ac_an ON (ac.name=ac_an.id)
 
-WHERE edits_pending=0
+WHERE TRUE
+  AND edits_pending=0
   AND a.name = ac.name -- must have same name
   AND (%(filter)s IS NULL OR an.name ~ %(filter)s) -- PostgreSQL will optimize out if filter is NULL
   AND an.name ~ %(re)s
+  AND not exists(
+      SELECT * FROM """+config.BOT_SCHEMA_DB+""".split_artists_history sah
+      WHERE sah.artist=a.id AND bot_version=%(ver)s
+        AND sah.time > (now() - %(interval)s::interval))
+/*
   AND true = ALL(
     SELECT exists(SELECT * FROM artist_name an WHERE lower(an.name)=c_name)
       FROM regexp_split_to_table(lower(an.name), %(re)s) c_name
       ) AND array_length(regexp_split_to_array(an.name, %(re)s), 1) > 1
-
+*/
   -- l_artist_artist is handled differently in Python code
   AND not exists(SELECT * FROM l_artist_label         WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_recording     WHERE entity0=a.id)
@@ -270,21 +290,30 @@ WHERE edits_pending=0
 ORDER BY ac.ref_count, r_count
 """
 
+VERSION = 1
+
 def bot_main(filter=None):
     init_db()
 
     cur = db.cursor(cursor_factory=NamedTupleCursor)
-    args = {'re': split_re, 'filter': filter}
+    cur2 = db.cursor()
+    args = {'re': split_re, 'filter': filter, 'ver': VERSION, 'interval': REFRESH_INTERVAL}
     print cur.mogrify(query, args)
     cur.execute(query, args)
 
     print "TOTAL found", cur.rowcount
+    if cur.rowcount == 0:
+        return
+
     init_mb()
     for art in cur:
-        if art.gid in state:
-            print "Skipping", art.gid
-        else:
-            handle_artist(art)
+        changed = handle_artist(art)
+        # None - user cancelled edit
+        if changed is not None:
+            cur2.execute("INSERT INTO "+config.BOT_SCHEMA_DB+".split_artists_history"+
+                         " (artist, changed, bot_version) VALUES (%s, %s, %s)",
+                        [art.id, changed, VERSION])
+            db.commit()
 
 def init_mb():
     global mb
@@ -296,6 +325,10 @@ def init_db():
     db = psycopg2.connect(config.MB_DB)
     psycopg2.extensions.register_type(psycopg2.extensions.UNICODE, db)
     psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY, db)
+
+    cur = db.cursor()
+    # Don't need data durability
+    cur.execute("SET synchronous_commit=off")
 
 if __name__=='__main__':
     if len(sys.argv) > 1:
