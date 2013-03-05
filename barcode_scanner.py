@@ -57,7 +57,8 @@ def pretty_size(size):
             return "%s %sB" % (round(size/float(lim/2**10),1), suf)
 
 symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
-            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
+            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE,
+            zbar.Symbol.CODE39)
 
 def scan_barcode(img):
     gray = img.convert('L')
@@ -101,13 +102,30 @@ def fetch_image(release, art_id):
 
     return f, url
 
+def get_annotation(rel_id):
+    cur = db.cursor()
+    cur.execute("""
+        SELECT a.text
+        FROM annotation a
+        JOIN release_annotation ra on (ra.annotation=a.id)
+        JOIN release r on (ra.release=r.id)
+        WHERE r.id=%s
+        ORDER BY created DESC LIMIT 1
+        """, [rel_id])
+
+    ann = cur.fetchone()
+    if ann:
+        return ann[0]
+    return None
+
 def handle_release(release):
     # May have multiple cover images with the same barcode
     codes = set()
     note = ""
     txn_ids = []
+    misc_codes = set()
 
-    for art_id, typ in zip(release.ids, release.types):
+    for art_id, art_type in zip(release.ids, release.types):
         txn_id = "%s %s" % (release.gid, art_id)
         if txn_id in state:
             print "SKIP %s" % txn_id
@@ -128,16 +146,41 @@ def handle_release(release):
             print "%s: %s: %s" % (txn_id, sym.type, sym.data)
             txn_ids.append("%s # %s: %s" % (txn_id, sym.type, sym.data))
             if sym.type in symtypes:
-                codes.add(sym.data)
+                # Can't enter this code on the "barcode" field
+
+                if sym.type == zbar.Symbol.CODE39:
+                    misc_codes.add(('Code 39 barcode:', sym.data))
+                else:
+                    codes.add(sym.data)
                 note += ("Recognized %s: %s from %s cover image %s\n" %
-                         (sym.type, sym.data, art_type_map[typ], url))
+                         (sym.type, sym.data, art_type_map[art_type], url))
 
     if not txn_ids:
         # Nothing to do
         return
 
+    if misc_codes:
+        old_annotation = get_annotation(release.id) or ""
+        changed = False
+        annotation = old_annotation + "\r\n"
+        for typ, code in misc_codes:
+            if code in annotation:
+                print "SKIP, code %s already written on annotation" % code
+            else:
+                annotation += "\r\n%s %s" % (typ, code)
+                changed = True
+
+        annotation = annotation.strip()
+
+        if changed:
+            ok = mb._edit_release_information(release.id, {"annotation": (old_annotation, annotation)}, note, auto=False)
+            if not ok:
+                return
+            print "Annotation edited"
+
     if not codes:
-        print "No barcode"
+        if not misc_codes:
+            print "No barcode"
         for txn_id in txn_ids:
             done(txn_id)
 
