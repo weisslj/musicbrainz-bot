@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 # encoding=utf-8
+#### Local config
+
+CONFIRM = True
+DRY_RUN = False
+COOKIE = 'musicbrainz_server_session=WRITE COOKIE HERE'
+
+#### Bot code
 
 import re
 import sys
@@ -10,7 +17,9 @@ from psycopg2.extras import NamedTupleCursor
 
 import config
 
-db = psycopg2.connect(config.dbconn)
+#### ...
+
+db = psycopg2.connect(config.MB_DB)
 
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
 psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
@@ -22,7 +31,7 @@ state = set(x.strip() for x in statefile.readlines())
 ####
 
 def done(gid):
-    if not config.dry_run:
+    if not DRY_RUN:
         statefile.write("%s\n" % gid)
         statefile.flush()
     state.add(gid)
@@ -36,14 +45,14 @@ def encode_dict(d):
     print
     return urllib.urlencode(l)
 
-USER_AGENT = 'brainybot (+https://musicbrainz.org/user/intgr_bot)'
+USER_AGENT = config.WWW_USER_AGENT or 'brainybot (+https://musicbrainz.org/user/intgr_bot)'
 def do_request(url, dic):
     print "POST", url
 
     rawdata = encode_dict(dic)
-    if config.dry_run:
+    if DRY_RUN:
         return
-    req = urllib2.Request(config.url + url, data=rawdata, headers={'Cookie': config.cookie, 'User-Agent': USER_AGENT})
+    req = urllib2.Request(config.MB_SITE + url, data=rawdata, headers={'Cookie': COOKIE, 'User-Agent': USER_AGENT})
     resp = urllib2.urlopen(req)
     code = resp.getcode()
     data = resp.read()
@@ -53,7 +62,7 @@ def do_request(url, dic):
 
 def do_del_relationship(rel_id, comment):
     postdata = {'confirm.edit_note': comment}
-    do_request('edit/relationship/delete?type1=artist&type0=artist&id=%d' % rel_id, postdata)
+    do_request('/edit/relationship/delete?type1=artist&type0=artist&id=%d' % rel_id, postdata)
 
 def construct_post(arts, names, joins, comment):
     assert len(arts) == len(names) == len(joins)+1
@@ -129,7 +138,7 @@ def get_score(src, dest):
         if rel.release_group not in rgs:
             rgs.add(rel.release_group)
             score += 1
-            comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %srelease/%s\n" % (rel.name, dest.description, rel.dest_tracks, rel.src_tracks, config.url, rel.gid)
+            comment += u"\"%s\" has tracks from %s (%s) and collaboration (%s): %s/release/%s\n" % (rel.name, dest.description, rel.dest_tracks, rel.src_tracks, config.MB_SITE, rel.gid)
 
     return score, rels, comment
 
@@ -156,7 +165,7 @@ def find_best_artist(src, name):
     # Find the best-matching artist. Currently we only accept 1 positive-score artist, otherwise it's considered ambiguous
     for art in cur:
         score, rels, c = get_score(src, art)
-        print "  %d %s: %sartist/%s" % (score, art.description, config.url, art.gid)
+        print "  %d %s: %s/artist/%s" % (score, art.description, config.MB_SITE, art.gid)
         if score <= 0:
             continue
 
@@ -204,7 +213,7 @@ def handle_credit(src, cred, comment):
         return None, None
 
     # Will call do_request with these values
-    url = 'artist/%s/credit/%d/edit' % (src.gid, cred.id)
+    url = '/artist/%s/credit/%d/edit' % (src.gid, cred.id)
     postdata = construct_post(arts, names, joins, comment.strip())
     cred_tx = (url, postdata)
 
@@ -214,7 +223,7 @@ def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
 
     #print src
-    print "%s (%d refs, %d rec): %sartist/%s" % (src.name, src.ref_count, src.r_count, config.url, src.gid)
+    print "%s (%d refs, %d rec): %s/artist/%s" % (src.name, src.ref_count, src.r_count, config.MB_SITE, src.gid)
 
     cur.execute("""\
         SELECT ac.id, ac.artist_count, ac_an.name, ac.ref_count
@@ -245,7 +254,7 @@ def handle_artist(src):
             continue
 
         comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)." % (cred_count, cred.ref_count, src.r_count)
-        if config.confirm:
+        if CONFIRM:
             comment += " Edit confirmed by human."
         comment += "\n"
 
@@ -262,7 +271,7 @@ def handle_artist(src):
     if not cred_txs:
         return
 
-    if config.confirm:
+    if CONFIRM:
         if not prompt("Submit? [y/n]"):
             return
 
@@ -274,7 +283,7 @@ def handle_artist(src):
     if len(cred_txs) == cred_count:
         for rel in del_rels:
             # Will call do_del_relationship with these values
-            do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %sartist/%s/open_edits" % (config.url, src.gid))
+            do_del_relationship(rel.id, "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid))
 
     # Only delete relationships if all credits were renamed
     done(src.gid)
