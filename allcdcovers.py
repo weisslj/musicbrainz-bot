@@ -4,6 +4,7 @@ import sys
 import os
 import re
 from hashlib import sha1
+import urllib
 import mechanize
 
 from editing import MusicBrainzClient
@@ -21,6 +22,12 @@ try:
 except ImportError:
     Image = None
     print "Warning: Cannot import PIL. Install python-imaging for image dimension information"
+
+try:
+    import psycopg2
+    from psycopg2.extras import NamedTupleCursor
+except ImportError:
+    psycopg2 = None
 
 ACC_CACHE = 'acc-cache'
 
@@ -109,6 +116,7 @@ def fetch_covers(base_url):
 
     resp = br.open(base_url)
     data = resp.read()
+    print "Title: %s" % br.title()
 
     pages = list(set(re.findall(acc_show_re % re.escape(release_id), data)))
     covers = []
@@ -138,8 +146,11 @@ def pretty_size(size):
         else:
             return "%s %sB" % (round(size/float(lim/2**10),1), suf)
 
-symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
-            zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
+if zbar:
+    symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
+                zbar.Symbol.ISBN13, zbar.Symbol.UPCA, zbar.Symbol.UPCE)
+else:
+    symtypes = ()
 
 def scan_barcode(img):
     gray = img.convert('L')
@@ -153,9 +164,9 @@ def scan_barcode(img):
 
     codes = []
     for sym in zimg:
-        codes.append("%s: %s" % (sym.type, sym.data))
+        codes.append((sym.type, sym.data))
 
-    return ", ".join(codes)
+    return codes
 
 def annotate_image(filename):
     """Returns image information as dict"""
@@ -169,7 +180,8 @@ def annotate_image(filename):
             if zbar:
                 data['barcode'] = barcode = scan_barcode(img)
                 if barcode:
-                    print "Barcode: %s (%r)" % (barcode, filename)
+                    print ", ".join("%s: %s" % bc for bc in data['barcode'])
+                    print "Barcode: %s (%r)" % (", ".join("%s: %s" % bc for bc in data['barcode']), filename)
 
             else:
                 data['barcode'] = None
@@ -209,20 +221,22 @@ def upload_covers(covers, mbid):
 
         typ = cov['type']
         # type can be: front, back, inside, inlay, cd, cd_2
-        if typ.startswith('cd'):
+        if typ in ['front', 'back']:
+            types = [typ]
+        elif typ.startswith('cd'):
             types = ['medium']
         elif typ == 'inside':
             types = ['booklet']
         elif typ == 'inlay':
             types = ['tray']
-        else:
-            types = [typ]
+        else: # ???
+            types = []
 
         note = "\"%(title)s\"\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
         if cov['dims']:
             note += "Dimensions: " + cov['dims']
             if cov['barcode']:
-                note += " / Barcode: " + cov['barcode']
+                note += " / Barcode: " + ", ".join("%s: %s" % bc for bc in cov['barcode'])
 
         note += "\n" + cov['referrer']
 
@@ -233,13 +247,74 @@ def upload_covers(covers, mbid):
 
         done(upload_id)
 
+#### BARCODE MATCHING
+
+def find_mbid_by_barcode(barcodes):
+    if psycopg2 is None:
+        print "Warning: psycopg2 could not be imported, skipping barcode lookup"
+        return
+
+    try:
+        db = psycopg2.connect(cfg.MB_DB)
+        cur = db.cursor(cursor_factory=NamedTupleCursor)
+    except psycopg2.Error as err:
+        print "Warning: Cannot look up barcode: %s" % err
+        return
+
+    lookup = []
+
+    for typ, code in barcodes:
+        lookup.append(code)
+        if typ == zbar.Symbol.UPCA:
+            # Equivalent codes, UPCA => EAN13
+            lookup.append('0' + code)
+
+    cur.execute("""\
+        SELECT r.gid, r.name, r.barcode,
+               (SELECT count(*) FROM cover_art ca WHERE ca.release=r.id) as art_count
+        FROM s_release r
+        WHERE r.barcode = any(%s)
+        """, [lookup])
+
+    if cur.rowcount == 0:
+        print "No matches in MusicBrainz"
+    else:
+        print # Empty line
+        print "Found:"
+
+    res = cur.fetchall()
+    for r in res:
+        print "\"%s\" matching %s (%d images): %s/release/%s" % (r.name, r.barcode, r.art_count, cfg.MB_SITE, r.gid)
+
+    if len(res) == 1 and res[0].art_count == 0:
+        print "Found 1 good match, auto-uploading..."
+        return res[0].gid
+
+    if len(res) > 1:
+        query = urllib.quote_plus(' OR '.join(lookup))
+        print "Please go here: %s/search?type=release&query=%s" % (cfg.MB_SITE, query)
+
 def handle_acc_covers(acc_url, mbids):
     print "Downloading from", acc_url
     covers = fetch_covers(acc_url)
 
+    barcodes = set()
+
     for cov in covers:
         data = annotate_image(cov['file'])
         cov.update(data)
+        if data['barcode']:
+            barcodes.update(bc for bc in data['barcode'] if bc[0] in symtypes)
+
+    # If no MB release was provided and we found some barcodes, try matching
+    # it up against MusicBrainz barcodes.
+    if not mbids and barcodes:
+        mbid = find_mbid_by_barcode(barcodes)
+        if mbid:
+            mbids = [mbid]
+
+    if mbids:
+        init_mb()
 
     for mbid in mbids:
         mburl = '%s/release/%s/cover-art' % (cfg.MB_SITE, mbid)
@@ -275,18 +350,22 @@ def bot_main():
             print_help()
             sys.exit(1)
 
-    init()
+    init_br()
     handle_acc_covers(acc_url, mbids)
 
-def init():
-    global mb, br
-    print "Initializing..."
-    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+def init_br():
+    global br
 
     br = mechanize.Browser()
     br.set_handle_robots(False) # no robots
     br.set_handle_refresh(False) # can sometimes hang without this
     br.addheaders = [('User-agent', 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1')]
+
+def init_mb():
+    global mb
+
+    print "Logging in..."
+    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 if __name__ == '__main__':
     bot_main()
