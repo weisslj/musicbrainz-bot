@@ -191,7 +191,7 @@ def annotate_image(filename):
         except IOError as err:
             print "Error in image %r: %s" % (filename, err)
             sys.exit(1)
-        data['dims'] = "%dx%d" % img.size
+        data['dims'] = img.size
     else:
         data['dims'] = None
         data['barcode'] = None
@@ -221,24 +221,36 @@ def upload_covers(covers, mbid):
 
         typ = cov['type']
         # type can be: front, back, inside, inlay, cd, cd_2
-        if typ in ['front', 'back']:
-            types = [typ]
+        if typ == 'front':
+            types = ['front']
         elif typ.startswith('cd'):
             types = ['medium']
         elif typ == 'inside':
             types = ['booklet']
         elif typ == 'inlay':
             types = ['tray']
+        elif typ == 'back':
+            types = ['back']
+            if cov['dims']:
+                # Detect spines - jewel cases only
+                w, h = cov['dims']
+                aspect = float(w)/h
+                if 1.21 <= aspect <= 1.35:
+                    types.append('spine')
         else: # ???
             types = []
 
         note = "\"%(title)s\"\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
         if cov['dims']:
-            note += "Dimensions: " + cov['dims']
+            note += "Dimensions: %dx%d" % cov['dims']
             if cov['barcode']:
                 note += " / Barcode: " + ", ".join("%s: %s" % bc for bc in cov['barcode'])
+            note += "\n"
 
-        note += "\n" + cov['referrer']
+        if 'spine' in types:
+            note += "Spines detected from image aspect ratio\n"
+
+        note += cov['referrer']
 
         print "Uploading %r (%s) from %r" % (types, cov['size_pretty'], cov['file'])
         # Doesn't work: position = '0' if cov['type'] == 'front' else None
