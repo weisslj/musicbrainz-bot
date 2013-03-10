@@ -72,6 +72,13 @@ acc_download_re = '"(/download/[0-9a-f]{32}/%s/[0-9a-f]{32}/[0-9a-f]+/([^/-]+-([
 # Content-Disposition: inline; filename=allcdcovers.jpg
 disposition_re = '(?:; ?|^)filename=((?:[^/]+).jpg)'
 
+def fix_title(title):
+    if title.startswith("Download "):
+        title = title[len("Download "):]
+    if title.endswith(" Covers | AllCDCovers"):
+        title = title[:-len(" Covers | AllCDCovers")]
+    return title
+
 ERR_SHA1 = '5dd9c1734067f7a6ee8791961130b52f804211ce'
 def download_cover(release_id, typ, resp=None, data=None):
     href, fragment, dtyp = re_find1(acc_download_re % re.escape(release_id), data)
@@ -85,7 +92,7 @@ def download_cover(release_id, typ, resp=None, data=None):
        'referrer': referrer,
        'type': typ,
        'file': filename,
-       'title': br.title(),
+       'title': fix_title(br.title()),
     }
     if os.path.exists(filename):
         print "SKIP download, already done: %r" % filename
@@ -116,7 +123,7 @@ def fetch_covers(base_url):
 
     resp = br.open(base_url)
     data = resp.read()
-    print "Title: %s" % br.title()
+    print "Title: %s" % fix_title(br.title())
 
     pages = list(set(re.findall(acc_show_re % re.escape(release_id), data)))
     covers = []
@@ -211,7 +218,7 @@ def cov_order(cov):
     typ = cov['type']
     return ordering[typ.split('_',1)[0]], typ
 
-COMMENT = "AllCDCovers"
+COMMENT = ""
 def upload_covers(covers, mbid):
     for cov in sorted(covers, key=cov_order):
         upload_id = "%s %s" % (mbid, cov['referrer'])
@@ -240,7 +247,7 @@ def upload_covers(covers, mbid):
         else: # ???
             types = []
 
-        note = "\"%(title)s\"\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
+        note = "\"%(title)s\" from AllCDCovers.com\nType: %(type)s / Size: %(size_pretty)s (%(size_bytes)s bytes)\n" % (cov)
         if cov['dims']:
             note += "Dimensions: %dx%d" % cov['dims']
             if cov['barcode']:
