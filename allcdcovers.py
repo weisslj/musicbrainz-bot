@@ -46,12 +46,19 @@ def re_find1(regexp, string):
             raise AssertionError("Expression %s matched %d times: %r" % (pat, len(m), string))
     return m[0]
 
-# Progress file - prevent duplicate uplpoads
+def create_parent_dir(filename):
+    dirname = os.path.dirname(filename)
+    if not os.path.exists(dirname):
+        print "Creating directory %r" % dirname
+        os.mkdir(dirname)
+
+# Progress file - prevent duplicate uploads
 DBFILE = os.path.join(ACC_CACHE, 'progress.db')
 try:
     statefile = open(DBFILE, 'r+')
     state = set(x.strip() for x in statefile.readlines())
 except IOError: # Not found? Try writing
+    create_parent_dir(DBFILE)
     statefile = open(DBFILE, 'w')
     state = set()
 
@@ -68,7 +75,7 @@ acc_url_rec = re.compile('/show/([0-9]+)/[^/-]+/([a-z0-9_]+)')
 #acc_show_re = '"(/show/%s/[^/-]+/(front|back|inside|inlay|cd))"'
 acc_show_re = '"(/show/%s/[^/-]+/([a-z0-9_]+))"'
 # <a href="/download/97e2d4d994aa7ca42da524ca333ff8d9/263803/8c4a7a3a4515ad214846617c90262367/51326581/acid_drinkers_vile_vicious_vision_1997_retail_cd-front">
-acc_download_re = '"(/download/[0-9a-f]{32}/%s/[0-9a-f]{32}/[0-9a-f]+/([^/-]+-([a-z0-9_]+)))"'
+acc_download_re = '"(/download/[0-9a-f]{32}/%s/[0-9a-f]{32}/[0-9a-f]+/([^/-]+)-([a-z0-9_]+))"'
 # Content-Disposition: inline; filename=allcdcovers.jpg
 disposition_re = '(?:; ?|^)filename=((?:[^/]+).jpg)'
 
@@ -81,11 +88,11 @@ def fix_title(title):
 
 ERR_SHA1 = '5dd9c1734067f7a6ee8791961130b52f804211ce'
 def download_cover(release_id, typ, resp=None, data=None):
-    href, fragment, dtyp = re_find1(acc_download_re % re.escape(release_id), data)
+    href, name, dtyp = re_find1(acc_download_re % re.escape(release_id), data)
 
     assert typ == dtyp, "%s != %s" % (typ, dtyp)
 
-    filename = os.path.join(ACC_CACHE, "[AllCDCovers]_%s.jpg" % fragment)
+    filename = os.path.join(ACC_CACHE, "%s-%s" % (release_id, name), "%s.jpg" % typ)
     referrer = resp.geturl()
 
     cov = {
@@ -99,12 +106,16 @@ def download_cover(release_id, typ, resp=None, data=None):
         cov['cached'] = True
         return cov
 
+    create_parent_dir(filename)
+
     resp = br.open_novisit(href)
     disp = resp.info().getheader('Content-Disposition')
     tmp_name = re_find1(disposition_re, disp)
     if tmp_name == 'allcdcovers.jpg':
         resp.close()
         raise Exception("Got response filename %r, URL is stale? %r" % (tmp_name, href))
+    elif tmp_name != "[AllCDCovers]_%s-%s.jpg" % (name, typ):
+        print "Warning: remote filename %r does not match expected name" % (tmp_name)
     #filename = os.path.join(ACC_CACHE, tmp_name)
     print "Downloading to %r" % (filename)
 
@@ -187,7 +198,6 @@ def annotate_image(filename):
             if zbar:
                 data['barcode'] = barcode = scan_barcode(img)
                 if barcode:
-                    print ", ".join("%s: %s" % bc for bc in data['barcode'])
                     print "Barcode: %s (%r)" % (", ".join("%s: %s" % bc for bc in data['barcode']), filename)
 
             else:
