@@ -143,8 +143,9 @@ def handle_release(release):
         if not symbols:
             txn_ids.append("%s # No barcode" % txn_id)
         for sym in symbols:
-            print "%s: %s: %s" % (txn_id, sym.type, sym.data)
-            txn_ids.append("%s # %s: %s" % (txn_id, sym.type, sym.data))
+            txn_my = txn_id + " # %s: %s (confidence %d)" % (sym.type, sym.data, sym.quality)
+            print txn_my
+            txn_ids.append(txn_my)
             if sym.type in symtypes:
                 # Can't enter this code on the "barcode" field
 
@@ -152,8 +153,8 @@ def handle_release(release):
                     misc_codes.add(('Code 39 barcode:', sym.data))
                 else:
                     codes.add(sym.data)
-                note += ("Recognized %s: %s from %s cover image %s\n" %
-                         (sym.type, sym.data, art_type_map[art_type], url))
+                note += ("Recognized %s: %s from %s cover image %s (confidence %d)\n" %
+                         (sym.type, sym.data, art_type_map[art_type], url, sym.quality))
 
     if not txn_ids:
         # Nothing to do
