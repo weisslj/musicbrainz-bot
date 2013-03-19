@@ -25,6 +25,7 @@ except ImportError:
 
 CAA_SITE = 'https://coverartarchive.org/beta'
 CAA_CACHE = 'caa-cache'
+QUALITY_THRESHOLD = 3
 
 if not os.path.exists(CAA_CACHE):
     os.mkdir(CAA_CACHE)
@@ -164,7 +165,7 @@ def handle_release(release):
             txn_my = txn_id + " # %(type)s: %(data)s (confidence %(quality)d @ scale %(scale)s)" % sym
             print txn_my
             txn_ids.append(txn_my)
-            if sym['type'] in symtypes:
+            if sym['type'] in symtypes and sym['quality'] >= QUALITY_THRESHOLD:
                 # Can't enter this code on the "barcode" field
 
                 if sym['type'] == zbar.Symbol.CODE39:
