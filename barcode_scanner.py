@@ -62,14 +62,32 @@ symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
 
 def scan_barcode(img):
     gray = img.convert('L')
-    w, h = gray.size
+    ow, oh = gray.size
+    symbols = {}
 
     scanner = zbar.ImageScanner()
     for type in symtypes:
         scanner.set_config(type, zbar.Config.ENABLE, 1)
-    zimg = zbar.Image(w, h, 'Y800', gray.tostring())
-    scanner.scan(zimg)
-    return zimg.symbols
+
+    for scale in [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.5, 0.4, 0.3, 0.2]:
+        w = int(ow * scale)
+        h = int(oh * scale)
+
+        if scale == 1:
+            img = gray
+        else:
+            img = gray.resize((w, h), Image.BICUBIC)
+            assert gray.size != img.size
+
+        zimg = zbar.Image(w, h, 'Y800', img.tostring())
+        scanner.scan(zimg)
+        for sym in zimg.symbols:
+            # For any (type, data) combination keep only the one with the best quality
+            key = (sym.type, sym.data)
+            if key not in symbols or symbols[key]['quality'] < sym.quality:
+                symbols[key] = {'type': sym.type, 'data': sym.data, 'quality': sym.quality, 'scale': scale}
+
+    return symbols.values()
 
 def fetch_image(release, art_id):
     url = '%s/release/%s/%d.jpg' % (CAA_SITE, release.gid, art_id)
@@ -143,18 +161,20 @@ def handle_release(release):
         if not symbols:
             txn_ids.append("%s # No barcode" % txn_id)
         for sym in symbols:
-            txn_my = txn_id + " # %s: %s (confidence %d)" % (sym.type, sym.data, sym.quality)
+            txn_my = txn_id + " # %(type)s: %(data)s (confidence %(quality)d @ scale %(scale)s)" % sym
             print txn_my
             txn_ids.append(txn_my)
-            if sym.type in symtypes:
+            if sym['type'] in symtypes:
                 # Can't enter this code on the "barcode" field
 
-                if sym.type == zbar.Symbol.CODE39:
-                    misc_codes.add(('Code 39 barcode:', sym.data))
+                if sym['type'] == zbar.Symbol.CODE39:
+                    misc_codes.add(('Code 39 barcode:', sym['data']))
                 else:
-                    codes.add(sym.data)
-                note += ("Recognized %s: %s from %s cover image %s (confidence %d)\n" %
-                         (sym.type, sym.data, art_type_map[art_type], url, sym.quality))
+                    codes.add(sym['data'])
+                sym['url'] = url
+                sym['art_type'] = art_type_map[art_type]
+                note += ("Recognized %(type)s: %(data)s from %(art_type)s cover image %(url)s"
+                         " (confidence %(quality)d @ scale %(scale)s)\n") % sym
 
     if not txn_ids:
         # Nothing to do
