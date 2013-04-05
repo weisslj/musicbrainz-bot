@@ -174,8 +174,9 @@ def handle_credit(src, cred, comment):
 def handle_artist(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
 
-    #print src
-    print "%s (%d refs, %d rec): %s/artist/%s" % (src.name, src.ref_count, src.r_count, config.MB_SITE, src.gid)
+    other_refs = src.ref_count-(src.r_count+src.t_count)
+    print "%s (%d rec, %d tracks, %d other refs): %s/artist/%s" % (
+            src.name, src.r_count, src.t_count, other_refs, config.MB_SITE, src.gid)
 
     cur.execute("""\
         SELECT ac.id, ac.artist_count, ac_an.name, ac.ref_count
@@ -197,7 +198,6 @@ def handle_artist(src):
     del_rels = None
     cred_txs = []
     for cred in cur:
-        print "  ----"
         if cred.name != src.name:
             # Issue #1
             # Artist name "Giraut de Bornelh & Peire Cardenal"
@@ -205,7 +205,9 @@ def handle_artist(src):
             print "  SKIP artist credit \"%s\" has different name" % cred.name
             continue
 
-        comment = u"Multiple artists. %d attached artist credits. No [other] relationships. Credit used %d times (%d recordings)." % (cred_count, cred.ref_count, src.r_count)
+        comment = u"%d attached artist credits. No [other] relationships. "\
+                   "Credit has %d recordings, %d tracks, %d other references." % (
+                   cred_count, src.r_count, src.t_count, other_refs)
         if CONFIRM:
             comment += " Edit confirmed by human."
         comment += "\n"
@@ -219,6 +221,8 @@ def handle_artist(src):
         # Sanity check, every credit must find the same rels to remove
         if last_rels is not None:
             assert last_rels == del_rels
+
+        print "  ----"
 
     if not cred_txs:
         # Found no good matches
@@ -240,10 +244,12 @@ def handle_artist(src):
 
     # Complete all transactions
     for tx in cred_txs:
+        print "Editing artist credit..."
         mb.edit_artist_credit(*tx)
 
     # Only delete relationships if all credits were fixed
     if len(cred_txs) == cred_count:
+        print "Deleting relationships..."
         for rel in del_rels:
             note = "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid)
             mb.remove_relationship(rel.id, 'artist', 'artist', note)
@@ -254,11 +260,8 @@ split_re = ur"((?:(?:\s*,\s*|\s+)(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|o
 split_rec = re.compile(split_re)
 query = """\
 SELECT a.id, a.gid, an.name, ac.ref_count,
-    (SELECT count(*)
-     FROM recording r
-     JOIN artist_credit ac ON (r.artist_credit=ac.id)
-     JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
-     WHERE acn.artist=a.id) AS r_count
+    (SELECT count(*) FROM recording r WHERE r.artist_credit=ac.id) AS r_count,
+    (SELECT count(*) FROM track t WHERE t.artist_credit=ac.id) AS t_count
 FROM artist a
     JOIN artist_name an ON (a.name=an.id)
 JOIN artist_credit_name acn ON (a.id=acn.artist)
@@ -287,7 +290,7 @@ WHERE TRUE
   AND not exists(SELECT * FROM l_artist_release_group WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_url           WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_work          WHERE entity0=a.id)
-ORDER BY ac.ref_count, r_count
+ORDER BY ac.ref_count, r_count, t_count
 """
 
 VERSION = 1
