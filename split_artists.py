@@ -235,7 +235,7 @@ def handle_credit(src):
 
     return True
 
-split_re = ur"((?:(?:\s*,\s*|\s+)(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
+split_re = ur"((?:(?:\s*[,;]\s*|\s+)(?:&|and|[Ff]eat\.?|vs\.?|[Pp]res(?:ents|\.)?|[Ss]tarring|[Mm]eets|avec|with|-|con|y|und|mit|ja|og|och|et|e|и)\s+|\s*(?:[*&+,;/・＆、とや])\s*))"
 split_rec = re.compile(split_re)
 query = """\
 SELECT a.id as a_id, ac.id as c_id, a.gid, an.name, ac.ref_count,
@@ -248,7 +248,7 @@ FROM artist_credit ac
 
 WHERE TRUE
   AND a.edits_pending=0
-  AND acn.name = ac.name -- Filters out multi-artist credits
+  AND ac.artist_count=1
   AND (%(filter)s IS NULL OR an.name ~ %(filter)s) -- PostgreSQL will optimize out if filter is NULL
   AND an.name ~ %(re)s
   AND not exists(
