@@ -12,12 +12,13 @@ CREATE SCHEMA mbbot;
 
 CREATE TABLE mbbot.split_artists_history(
     artist       int            not null,
+    credit       int            ,
     changed      bool           not null,
     bot_version  smallint       not null,
     time         timestamptz    not null default now()
 );
-CREATE INDEX split_artists_history_artist_bot_version_time_idx
-    ON mbbot.split_artists_history(artist, bot_version, time);
+CREATE INDEX split_artists_history_credit_bot_version_time_idx
+    ON mbbot.split_artists_history(credit, bot_version, time);
 """
 
 #### Bot code
@@ -46,7 +47,7 @@ def get_score(src, dest):
         FROM l_artist_artist laa
         JOIN link l ON (laa.link=l.id)
         JOIN link_type lt ON (lt.id=link_type)
-        WHERE entity0=%s AND entity1=%s""", [dest.id, src.id])
+        WHERE entity0=%s AND entity1=%s""", [dest.id, src.a_id])
     for link in cur:
         if link.link_type != 102: # "collaborated on"
             # Wrong relationship type, can't handle that
@@ -83,7 +84,7 @@ def get_score(src, dest):
           AND acn2.artist=%s
         GROUP BY 1,2,3
         ORDER BY count(distinct t1.position)+count(distinct t2.position) DESC, rn.name
-        """, [src.id, dest.id])
+        """, [src.a_id, dest.id])
 
     rgs = set()
     for rel in cur:
@@ -141,9 +142,9 @@ def prompt(question):
 
     return answer == 'y'
 
-def handle_credit(src, cred, comment):
+def find_credit_matches(cred, comment):
     del_rels = []
-    match = split_rec.split(src.name)
+    match = split_rec.split(cred.name)
     names = match[0::2]
     joins = match[1::2]
     arts = []
@@ -154,7 +155,7 @@ def handle_credit(src, cred, comment):
     assert len(names) > 1
 
     for name in names:
-        art, rels, c = find_best_artist(src, name)
+        art, rels, c = find_best_artist(cred, name)
         if not art:
             return None, None
         arts.append(art)
@@ -167,71 +168,34 @@ def handle_credit(src, cred, comment):
 
     # Will call mb.edit_artist_credit with these values
     # edit_artist_credit(entity_id, credit_id, ids, names, join_phrases, edit_note)
-    cred_tx = (src.gid, cred.id, [a.id for a in arts], names, joins, comment.strip())
+    cred_tx = (cred.gid, cred.c_id, [a.id for a in arts], names, joins, comment.strip())
 
     return cred_tx, del_rels
 
-def handle_artist(src):
+def handle_credit(src):
     cur = db.cursor(cursor_factory=NamedTupleCursor)
 
     other_refs = src.ref_count-(src.r_count+src.t_count)
-    print "%s (%d rec, %d tracks, %d other refs): %s/artist/%s" % (
+    print "%s (%d rec, %d tracks, %d other refs): %s/artist/%s/aliases" % (
             src.name, src.r_count, src.t_count, other_refs, config.MB_SITE, src.gid)
 
-    cur.execute("""\
-        SELECT ac.id, ac.artist_count, ac_an.name, ac.ref_count
-        FROM artist_credit ac
-        JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
-        JOIN artist a ON (acn.artist=a.id)
-        JOIN artist_name ac_an ON (ac.name=ac_an.id)
-        WHERE a.id=%s""", [src.id])
-    cred_count = cur.rowcount
-    #if cred_count < 2:
-    #    return
-    #if cur.rowcount != 1:
-    #    print '  SKIP %d credits' % cur.rowcount
-    #    return
-    #cred = cur.fetchone()
-    #if cred.artist_count != 1:
-    #    print "  SKIP credit has multiple artists"
-    #    return
     del_rels = None
-    cred_txs = []
-    for cred in cur:
-        if cred.name != src.name:
-            # Issue #1
-            # Artist name "Giraut de Bornelh & Peire Cardenal"
-            # Credited as "Giraut de Bornelh - Peire Cardenal"
-            print "  SKIP artist credit \"%s\" has different name" % cred.name
-            continue
+    comment = (u"Artist has no [other] relationships. "
+               "Credit has %d recordings, %d tracks, %d other references.") % (
+               src.r_count, src.t_count, other_refs)
+    if CONFIRM:
+        comment += " Edit confirmed by human."
+    comment += "\n"
 
-        comment = u"%d attached artist credits. No [other] relationships. "\
-                   "Credit has %d recordings, %d tracks, %d other references." % (
-                   cred_count, src.r_count, src.t_count, other_refs)
-        if CONFIRM:
-            comment += " Edit confirmed by human."
-        comment += "\n"
-
-        last_rels = del_rels
-        cred_tx, del_rels = handle_credit(src, cred, comment)
-        if cred_tx is None:
-            continue
-        cred_txs.append(cred_tx)
-
-        # Sanity check, every credit must find the same rels to remove
-        if last_rels is not None:
-            assert last_rels == del_rels
-
-        print "  ----"
-
-    if not cred_txs:
+    cred_tx, del_rels = find_credit_matches(src, comment)
+    if cred_tx is None:
         # Found no good matches
         return False
 
     # Make sure an edit wasn't already submitted.
     cur.execute("SELECT EXISTS(SELECT * FROM "+config.BOT_SCHEMA_DB+".split_artists_history"+
-                " WHERE artist=%s AND changed=true)",
-                [src.id])
+                " WHERE credit=%s AND changed=true)",
+                [src.c_id])
 
     changed = cur.fetchone()[0]
     if changed:
@@ -242,47 +206,55 @@ def handle_artist(src):
         if not prompt("Submit? [y/n]"):
             return None
 
-    # Complete all transactions
-    for tx in cred_txs:
-        print "Editing artist credit..."
-        mb.edit_artist_credit(*tx)
+    print "Editing artist credit..."
+    mb.edit_artist_credit(*cred_tx)
 
-    # Only delete relationships if all credits were fixed
-    if len(cred_txs) == cred_count:
-        print "Deleting relationships..."
-        for rel in del_rels:
-            note = "Deleting relationship, so empty collaboration artist can be removed.\nSee: %s/artist/%s/open_edits" % (config.MB_SITE, src.gid)
-            mb.remove_relationship(rel.id, 'artist', 'artist', note)
+    if del_rels:
+        # Only delete artist relationships if all artist's credits were fixed
+        cur.execute("""
+            SELECT count(*)
+            FROM artist_credit ac
+                JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
+                JOIN artist a ON (a.id=acn.artist)
+            WHERE a.id=%s AND ac.id != %s -- Exclude credit currently being edited
+              AND not exists(
+                    -- Also exclude credits already edited before
+                    SELECT * FROM """+config.BOT_SCHEMA_DB+""".split_artists_history sah
+                    WHERE sah.credit=ac.id AND sah.changed=true)
+            """, [src.a_id, src.c_id])
+
+        count = cur.fetchone()[0]
+        if count != 0:
+            print "NOT deleting relationships, %d credits left" % count
+        else:
+            print "Deleting relationships..."
+            for rel in del_rels:
+                note = ("Deleting relationship, so empty collaboration artist can be removed.\n"
+                        "See: %s/artist/%s/open_edits") % (config.MB_SITE, src.gid)
+                mb.remove_relationship(rel.id, 'artist', 'artist', note)
 
     return True
 
 split_re = ur"((?:(?:\s*,\s*|\s+)(?:&|and|feat\.?|vs\.?|presents|with|-|und|ja|og|och|et|e|и)\s+|\s*(?:[*&+,/・＆、とや])\s*))"
 split_rec = re.compile(split_re)
 query = """\
-SELECT a.id, a.gid, an.name, ac.ref_count,
+SELECT a.id as a_id, ac.id as c_id, a.gid, an.name, ac.ref_count,
     (SELECT count(*) FROM recording r WHERE r.artist_credit=ac.id) AS r_count,
     (SELECT count(*) FROM track t WHERE t.artist_credit=ac.id) AS t_count
-FROM artist a
-    JOIN artist_name an ON (a.name=an.id)
-JOIN artist_credit_name acn ON (a.id=acn.artist)
-    JOIN artist_credit ac ON (acn.artist_credit=ac.id)
-    --JOIN artist_name ac_an ON (ac.name=ac_an.id)
+FROM artist_credit ac
+    JOIN artist_credit_name acn ON (acn.artist_credit=ac.id)
+    JOIN artist_name an ON (ac.name=an.id)
+    JOIN artist a ON (a.id=acn.artist)
 
 WHERE TRUE
-  AND edits_pending=0
-  AND a.name = ac.name -- must have same name
+  AND a.edits_pending=0
+  AND acn.name = ac.name -- Filters out multi-artist credits
   AND (%(filter)s IS NULL OR an.name ~ %(filter)s) -- PostgreSQL will optimize out if filter is NULL
   AND an.name ~ %(re)s
   AND not exists(
       SELECT * FROM """+config.BOT_SCHEMA_DB+""".split_artists_history sah
-      WHERE sah.artist=a.id AND bot_version=%(ver)s
+      WHERE sah.credit=ac.id AND bot_version=%(ver)s
         AND sah.time > (now() - %(interval)s::interval))
-/*
-  AND true = ALL(
-    SELECT exists(SELECT * FROM artist_name an WHERE lower(an.name)=c_name)
-      FROM regexp_split_to_table(lower(an.name), %(re)s) c_name
-      ) AND array_length(regexp_split_to_array(an.name, %(re)s), 1) > 1
-*/
   -- l_artist_artist is handled differently in Python code
   AND not exists(SELECT * FROM l_artist_label         WHERE entity0=a.id)
   AND not exists(SELECT * FROM l_artist_recording     WHERE entity0=a.id)
@@ -309,13 +281,13 @@ def bot_main(filter=None):
         return
 
     init_mb()
-    for art in cur:
-        changed = handle_artist(art)
+    for cred in cur:
+        changed = handle_credit(cred)
         # None - user cancelled edit
         if changed is not None:
             cur2.execute("INSERT INTO "+config.BOT_SCHEMA_DB+".split_artists_history"+
-                         " (artist, changed, bot_version) VALUES (%s, %s, %s)",
-                        [art.id, changed, VERSION])
+                         " (artist, credit, changed, bot_version) VALUES (%s, %s, %s, %s)",
+                        [cred.a_id, cred.c_id, changed, VERSION])
             db.commit()
 
 def init_mb():
