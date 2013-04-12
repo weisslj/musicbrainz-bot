@@ -4,31 +4,59 @@ import sys
 import os
 import re
 import urllib2
-import discogs_client as discogs
 import sqlalchemy
-import amazonproduct
 from PIL import Image
 from cStringIO import StringIO
-from amazonproduct.contrib.retry import RetryAPI
 import time
 from editing import MusicBrainzClient
 import socket
-from utils import out, colored_out, bcolors
+from utils import out, colored_out, bcolors, monkeypatch_mechanize
 import config as cfg
-import config_caa as cfg_caa
-from mbbot.source.spotify import SpotifyWebService
-from mbbot.source.itunes import ItunesSearchAPI
+try:
+    import config_caa as cfg_caa
+except ImportError:
+    cfg_caa = cfg
+
+try:
+    import discogs_client as discogs
+except ImportError as err:
+    colored_out(bcolors.FAIL,
+                "Error: Cannot use Discogs: %s\n" % err +
+                "Run 'pip install discogs-client' or get discogs_client.py from\n"
+                "https://github.com/discogs/discogs_client")
+    sys.exit(1)
+
+# Optional modules
+try:
+    import amazonproduct
+    from amazonproduct.contrib.retry import RetryAPI
+except ImportError as err:
+    colored_out(bcolors.WARNING, "Warning: Cannot use Amazon: %s" % err)
+    amazonproduct = None
+
+try:
+    from mbbot.source.spotify import SpotifyWebService
+    spotify = SpotifyWebService()
+except ImportError as err:
+    colored_out(bcolors.WARNING, "Warning: Cannot use Spotify: %s" % err)
+    spotify = None
+
+try:
+    from mbbot.source.itunes import ItunesSearchAPI
+    itunes = ItunesSearchAPI()
+except ImportError as err:
+    colored_out(bcolors.WARNING, "Warning: Cannot use iTunes: %s" % err)
+    itunes = None
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
-db.execute("SET search_path TO musicbrainz, mbbot")
+db.execute("SET search_path TO musicbrainz, %s, public" % cfg.BOT_SCHEMA_DB)
 
+monkeypatch_mechanize()
 mb = MusicBrainzClient(cfg_caa.MB_USERNAME, cfg_caa.MB_PASSWORD, cfg_caa.MB_SITE)
 
 discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
 
-spotify = SpotifyWebService()
-itunes = ItunesSearchAPI()
 
 socket.setdefaulttimeout(300)
 
@@ -119,8 +147,6 @@ LIMIT 100
 """
 
 def amz_get_info(url):   
-    if url is None:
-        return (None, None)
     params = { 'ResponseGroup' : 'Images' }
     
     m = re.match(r'^https?://(?:www.)?amazon\.(.*?)(?:\:[0-9]+)?/.*/([0-9B][0-9A-Z]{9})(?:[^0-9A-Z]|$)', url)
@@ -216,23 +242,23 @@ for release in db.execute(query):
         colored_out(bcolors.NONE, ' * Discogs score:\t%s \t %s' % (best_score, front_uri))
 
     # Evaluate Amazon
-    if release['amz_url'] is not None:
+    if amazonproduct is not None and release['amz_url'] is not None:
         colored_out(bcolors.HEADER, ' * Amazon = %s' % (release['amz_url'],))
-    amz_image, amz_barcode = amz_get_info(release['amz_url'])
-    # Amazon: check barcode matches
-    if amz_barcode is not None and release['barcode'] is not None \
-        and re.sub(r'^(0+)', '', amz_barcode) != re.sub(r'^(0+)', '', release['barcode']):
-        colored_out(bcolors.FAIL, " * Amz barcode doesn't match MB barcode (%s vs %s) => skipping" % (amz_barcode, release['barcode']))
-        continue
-    if amz_image is not None:
-        amz_score = amz_image.Height * amz_image.Width
-        colored_out(bcolors.NONE, ' * Amazon score:\t%s \t %s' % (amz_score, amz_image.URL.pyval))
-        if amz_score > best_score:
-            front_uri = amz_image.URL.pyval
-            best_score = amz_score
+        amz_image, amz_barcode = amz_get_info(release['amz_url'])
+        # Amazon: check barcode matches
+        if amz_barcode is not None and release['barcode'] is not None \
+            and re.sub(r'^(0+)', '', amz_barcode) != re.sub(r'^(0+)', '', release['barcode']):
+            colored_out(bcolors.FAIL, " * Amz barcode doesn't match MB barcode (%s vs %s) => skipping" % (amz_barcode, release['barcode']))
+            continue
+        if amz_image is not None:
+            amz_score = amz_image.Height * amz_image.Width
+            colored_out(bcolors.NONE, ' * Amazon score:\t%s \t %s' % (amz_score, amz_image.URL.pyval))
+            if amz_score > best_score:
+                front_uri = amz_image.URL.pyval
+                best_score = amz_score
 
     # Evaluate Spotify
-    if release['barcode'] is not None and release['barcode'] != "":
+    if spotify is not None and release['barcode'] is not None and release['barcode'] != "":
         albums = spotify.search_albums('upc:%s' % release['barcode'])
         if len(albums) == 1:
             colored_out(bcolors.WARNING, ' * Spotify = https://embed.spotify.com/?uri=%s&view=coverart' % (albums[0]['href'],))
@@ -247,7 +273,7 @@ for release in db.execute(query):
                     best_score = spotify_score
 
     # Evaluate iTunes
-    if release['barcode'] is not None and release['barcode'] != "":
+    if itunes is not None and release['barcode'] is not None and release['barcode'] != "":
         albums = itunes.search({'upc': release['barcode']})
         if len(albums) == 1:
             colored_out(bcolors.WARNING, ' * ITunes = %s' % (albums[0]['collectionViewUrl'],))
