@@ -133,13 +133,16 @@ def main(verbose=False):
         f = urllib.urlopen(cleanup_url)
         cleanup_review_urls |= set(re.findall(ur'http://www.bbc.co.uk/music/reviews/[0-9a-z]+', f.read()))
 
-    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+    editor_id = db.execute('''SELECT id FROM editor WHERE name = %s''', cfg.MB_USERNAME).first()[0]
+    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=editor_id)
 
     normal_edits_left, edits_left = mb.edits_left()
 
     bbc_reviews = list(load_bbc_reviews(bbc_sitemap))
     count = len(bbc_reviews)
     for i, (review_url, release_url, title) in enumerate(bbc_reviews):
+        if normal_edits_left <= 0:
+            break
         if verbose:
             out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
             out(u'%s %s' % (title, review_url))
@@ -173,8 +176,14 @@ def main(verbose=False):
                 ' please note it here and put the correct mapping in'\
                 ' the wiki [2].\n\n[1] %s\n[2] %s' % (title, bbc_sitemap_url, cleanup_urls[0])
         text += '\n\n%s' % program_string(__file__)
-        out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid, review_url))
-        mb.add_url('release_group', gid, 94, review_url, text, auto=False)
+        try:
+            out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid, review_url))
+            mb.add_url('release_group', gid, 94, review_url, text, auto=False)
+            db.execute("INSERT INTO bot_bbc_reviews_set (gid,url) VALUES (%s,%s)", (gid, review_url))
+            bbc_reviews_set.add((gid, review_url))
+            normal_edits_left -= 1
+        except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
+            out(e)
 
 if __name__ == '__main__':
     parser = OptionParser()
