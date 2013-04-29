@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import re
+import os.path
+import time
+import email.utils
+from optparse import OptionParser
 from collections import defaultdict
 import urllib
 from editing import MusicBrainzClient
-from htmlentitydefs import name2codepoint
-from StringIO import StringIO
 from gzip import GzipFile
 import xml.dom.minidom
 
@@ -13,130 +15,171 @@ import sqlalchemy
 import Levenshtein
 
 import config as cfg
+from mbbot.utils.pidfile import PIDFile
+import utils
 from utils import out, program_string, asciipunct
 
-engine = sqlalchemy.create_engine(cfg.MB_DB)
-db = engine.connect()
-db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
+'''
+CREATE TABLE bot_bbc_reviews_set (
+    gid uuid NOT NULL,
+    url text NOT NULL,
+    processed timestamp with time zone DEFAULT now(),
+    CONSTRAINT bot_bbc_reviews_set_pkey PRIMARY KEY (gid,url)
+);
+'''
 
-bbc_mapping_url = 'https://raw.github.com/gist/1704822/5c8291f273c80e4e6ffa7ea521be694eb7bceb79/gistfile1.txt'
+bbc_sitemap_url = 'http://www.bbc.co.uk/music/sitemap-extended.xml.gz'
+bbc_sitemap = 'bbc_music_sitemap.xml.gz'
 cleanup_urls = ['http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup', 'http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup/Old']
 
-def load_bbc_reviews():
-    global bbc_reviews
-    data = GzipFile(fileobj=StringIO(urllib.urlopen('http://www.bbc.co.uk/music/sitemap-extended.xml.gz').read())).read()
-    data = re.sub(r'(<urlset .*?)>', r'\1 xmlns:og="http://ogp.me/ns#">', data)
-    x = xml.dom.minidom.parseString(data)
-    bbc_reviews = {}
-    for url in x.getElementsByTagName('url'):
+def get_remote_mtime(url):
+    lastmod = urllib.urlopen(url).info().getheader('Last-Modified')
+    return email.utils.mktime_tz(email.utils.parsedate_tz(lastmod))
+
+def get_local_mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return -1
+
+def download_if_modified(url, filename):
+    remote_mtime = get_remote_mtime(url)
+    if remote_mtime > get_local_mtime(filename):
+        urllib.urlretrieve(url, filename)
+        os.utime(filename, (time.time(), remote_mtime))
+
+def load_bbc_reviews(path):
+    doc = xml.dom.minidom.parse(GzipFile(path))
+    for url in doc.getElementsByTagName('url'):
         loc = url.getElementsByTagName('loc')[0].firstChild.data
         if re.match(ur'http://www\.bbc\.co\.uk/music/reviews/', loc):
             d = {}
-            for tag in ['loc', 'lastmod', 'og:title', 'og:image', 'og:type']:
+            for tag in ['loc', 'og:title', 'foaf:primaryTopic']:
                 el = url.getElementsByTagName(tag)
                 if el:
                     d[tag] = el[0].firstChild.data
-            bbc_reviews[loc] = d
-#load_bbc_reviews()
+            if len(d) == 3:
+                yield (d['loc'], d['foaf:primaryTopic'], d['og:title'])
 
 def are_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))
     ratio = Levenshtein.jaro_winkler(name1, name2)
     return ratio >= 0.8 or name1 in name2 or name2 in name1
 
-def html_unescape(s):
-    return re.sub(r'&(%s);' % '|'.join(name2codepoint), lambda m: unichr(name2codepoint[m.group(1)]), s)
+def get_release_redirects(db):
+    query_release_redirects = '''
+        SELECT redirect.gid, r.release_group, r.artist_credit, rn.name
+        FROM release_gid_redirect redirect
+        JOIN release r ON r.id = redirect.new_id
+        JOIN release_name rn ON r.name = rn.id
+    '''
+    for gid, rg, ac, name in db.execute(query_release_redirects):
+        yield (gid, (rg, ac, name))
 
-def get_bbc_review_album_name(bbc_url):
-    #return bbc_reviews[bbc_url]['og:title']
-    try:
-        f = urllib.urlopen(bbc_url)
-        data = f.read()
-    except IOError, e:
-        out(e)
-        return None
-    m = re.search(ur'<title>BBC - Music - Review of (.+?)</title>', data)
-    #m = re.search(ur'<em>(.+?)</em> *<span>Review</span> *</h1>', data)
-    return html_unescape(unicode(m.group(1), 'utf-8')) if m else None
+def get_release_groups(db):
+    query_rgs = '''
+        SELECT rg.id, rg.gid, rn.name
+        FROM release_group rg
+        JOIN release_name rn ON rg.name = rn.id
+    '''
+    for rg, gid, name in db.execute(query_rgs):
+        yield (rg, (gid, name))
 
-def parse_sql_table_dump(text):
-    lines = re.findall(ur'^\| +(.+?) +\| +(.+?) +\| *$', text, re.M)
-    return lines[1:]
+def get_releases(db):
+    query_releases = '''
+        SELECT r.gid, r.release_group, r.artist_credit, rn.name
+        FROM release r
+        JOIN release_name rn ON r.name = rn.id
+    '''
+    for gid, rg, ac, name in db.execute(query_releases):
+        yield (gid, (rg, ac, name))
 
-mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+def get_review_urls(db):
+    query_rg_reviews = '''
+        SELECT l_rgu.entity0, url.url
+        FROM l_release_group_url l_rgu
+        JOIN link l ON l_rgu.link = l.id
+        JOIN url ON url.id = l_rgu.entity1
+        WHERE l.link_type = 94
+    '''
+    for rg, url in db.execute(query_rg_reviews):
+        yield (rg, url)
 
-query_release_redirects = '''
-SELECT redirect.gid, r.release_group, rn.name
-FROM release_gid_redirect redirect
-JOIN release r ON r.id = redirect.new_id
-JOIN release_name rn ON r.name = rn.id
-'''
-release_redirects = dict((gid, (rg, name)) for gid, rg, name in db.execute(query_release_redirects))
+def artist_credit(db, ac):
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
 
-query_rgs = '''
-SELECT rg.id, rg.gid, rn.name, rgt.name
-FROM release_group rg
-JOIN release_name rn ON rg.name = rn.id
-LEFT JOIN release_group_type rgt ON rgt.id = rg.type
-'''
-release_groups = dict((rg, (gid, name, rgtype)) for rg, gid, name, rgtype in db.execute(query_rgs))
+def db_connect():
+    engine = sqlalchemy.create_engine(cfg.MB_DB)
+    db = engine.connect()
+    db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
+    return db
 
-query_releases = '''
-SELECT r.gid, r.release_group, rn.name
-FROM release r
-JOIN release_name rn ON r.name = rn.id
-'''
-releases = dict((gid, (rg, name)) for gid, rg, name in db.execute(query_releases))
+def main(verbose=False):
+    download_if_modified(bbc_sitemap_url, bbc_sitemap)
 
-query_rg_reviews = '''
-SELECT l_rgu.entity0, url.url
-FROM l_release_group_url l_rgu
-JOIN link l ON l_rgu.link = l.id
-JOIN url ON url.id = l_rgu.entity1
-WHERE l.link_type = 94
-'''
-review_urls = defaultdict(set)
-for rg, url in db.execute(query_rg_reviews):
-    review_urls[rg].add(url)
+    db = db_connect()
 
-cleanup_review_urls = set()
-for cleanup_url in cleanup_urls:
-    f = urllib.urlopen(cleanup_url)
-    cleanup_review_urls |= set(re.findall(ur'http://www.bbc.co.uk/music/reviews/[0-9a-z]+', f.read()))
+    release_redirects = dict(get_release_redirects(db))
+    release_groups = dict(get_release_groups(db))
+    releases = dict(get_releases(db))
+    bbc_reviews_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_bbc_reviews_set'''))
 
-f = urllib.urlopen(bbc_mapping_url)
-rows = parse_sql_table_dump(f.read())
-count = len(rows)
-for i, (bbc_url, release_gid) in enumerate(rows):
-    if release_gid == 'NULL':
-        #bbc_name = get_bbc_review_album_name(bbc_url)
-        #out(u'|-\n| [%s %s]\n|\n|' % (bbc_url, bbc_name))
-        continue
-    if bbc_url in cleanup_review_urls:
-        continue
-    row = release_redirects.get(release_gid)
-    if not row:
-        row = releases.get(release_gid)
-    if not row:
-        out('non-existant release in review %s' % bbc_url)
-        continue
-    rg, release_name = row
-    gid, name, rgtype = release_groups[rg]
-    #if rgtype == 'Single':
-    #    out('%s - http://musicbrainz.org/release-group/%s - %s' % (name, gid, bbc_url))
-    #continue
-    if bbc_url in review_urls[rg]:
-        continue
-    bbc_name = get_bbc_review_album_name(bbc_url)
-    if not bbc_name:
-        out('could not get BBC album name of %s, aborting' % bbc_url)
-        continue
-    out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
-    out('http://musicbrainz.org/release-group/%s - %s' % (gid, bbc_url))
-    if not are_similar(name, bbc_name):
-        out(u'  similarity too small: %s <-> %s' % (name, bbc_name))
-        #out(u'|-\n| [%s %s]\n| [[ReleaseGroup:%s|%s]]\n| [[Release:%s|%s]]' % (bbc_url, bbc_name, gid, name, release_gid, release_name))
-        continue
-    text = u'Review is in BBC mapping [1], and review name “%s” is similar to the release group name. If this is wrong, please note it here and put the correct mapping in the wiki [2].\n\n[1] %s\n[2] http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup' % (bbc_name, bbc_mapping_url)
-    text += '\n\n%s' % program_string(__file__)
-    mb.add_url('release_group', gid, 94, bbc_url, text, auto=False)
+    review_urls = defaultdict(set)
+    for rg, url in get_review_urls(db):
+        review_urls[rg].add(url)
+
+    cleanup_review_urls = set()
+    for cleanup_url in cleanup_urls:
+        f = urllib.urlopen(cleanup_url)
+        cleanup_review_urls |= set(re.findall(ur'http://www.bbc.co.uk/music/reviews/[0-9a-z]+', f.read()))
+
+    mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
+
+    normal_edits_left, edits_left = mb.edits_left()
+
+    bbc_reviews = list(load_bbc_reviews(bbc_sitemap))
+    count = len(bbc_reviews)
+    for i, (review_url, release_url, title) in enumerate(bbc_reviews):
+        if verbose:
+            out(u'%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
+            out(u'%s %s' % (title, review_url))
+            out(release_url)
+        if review_url in cleanup_review_urls:
+            continue
+        release_gid = utils.extract_mbid(release_url, 'release')
+        row = release_redirects.get(release_gid)
+        if not row:
+            row = releases.get(release_gid)
+        if not row:
+            if verbose:
+                out('  non-existant release in review %s' % review_url)
+            continue
+        rg, ac, release_name = row
+        gid, name = release_groups[rg]
+        if review_url in review_urls[rg]:
+            continue
+        if (gid, review_url) in bbc_reviews_set:
+            if verbose:
+                out(u'  already linked earlier (probably got removed by some editor!')
+            continue
+        mb_title = '%s - %s' % (artist_credit(db, ac), release_name)
+        if not are_similar(title, mb_title):
+            if verbose:
+                out(u'  similarity too small: %s <-> %s' % (title, mb_title))
+                # out(u'|-\n| [%s %s]\n| [[ReleaseGroup:%s|%s]]\n| [[Release:%s|%s]]' % (review_url, bbc_name, gid, name, release_gid, release_name))
+            continue
+        text = u'Review is in BBC mapping [1], and review name “%s” is'\
+                ' similar to the release name. If this is wrong,'\
+                ' please note it here and put the correct mapping in'\
+                ' the wiki [2].\n\n[1] %s\n[2] %s' % (title, bbc_sitemap_url, cleanup_urls[0])
+        text += '\n\n%s' % program_string(__file__)
+        out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid, review_url))
+        mb.add_url('release_group', gid, 94, review_url, text, auto=False)
+
+if __name__ == '__main__':
+    parser = OptionParser()
+    parser.add_option('-v', '--verbose', action='store_true', default=False,
+            help='be more verbose')
+    (options, args) = parser.parse_args()
+    with PIDFile('/tmp/mbbot_bbc_reviews.pid'):
+        main(options.verbose)
