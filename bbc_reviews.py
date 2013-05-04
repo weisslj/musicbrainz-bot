@@ -30,7 +30,9 @@ CREATE TABLE bot_bbc_reviews_set (
 
 bbc_sitemap_url = 'http://www.bbc.co.uk/music/sitemap-extended.xml.gz'
 bbc_sitemap = 'bbc_music_sitemap.xml.gz'
-cleanup_urls = ['http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup', 'http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup/Old']
+cleanup_urls = ['http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup',
+                'http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup/Old',
+                'http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup/Problematic']
 
 def get_remote_mtime(url):
     lastmod = urllib.urlopen(url).info().getheader('Last-Modified')
