@@ -7,6 +7,7 @@ import email.utils
 from optparse import OptionParser
 from collections import defaultdict
 import urllib
+import urllib2
 from editing import MusicBrainzClient
 from gzip import GzipFile
 import xml.dom.minidom
