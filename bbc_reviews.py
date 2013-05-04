@@ -65,8 +65,8 @@ def load_bbc_reviews(path):
 
 def are_similar(name1, name2):
     name1, name2 = (asciipunct(s.strip().lower()) for s in (name1, name2))
-    ratio = Levenshtein.jaro_winkler(name1, name2)
-    return ratio >= 0.8 or name1 in name2 or name2 in name1
+    ratio = Levenshtein.jaro_winkler(name1, name2, 0.0) # no common prefix length
+    return ratio >= 0.8
 
 def get_release_redirects(db):
     query_release_redirects = '''
