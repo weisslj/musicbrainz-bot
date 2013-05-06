@@ -347,7 +347,10 @@ def main(verbose=False):
         if 'Binding' in attrs.__dict__:
             if 'NumberOfDiscs' in attrs.__dict__:
                 text += u'%s × ' % attrs.NumberOfDiscs
-            text += u'%s' % attrs.Binding
+            if attrs.Binding == 'Audio CD' and 'Format' in attrs.__dict__:
+                text += u'%s' % attrs.Format
+            else:
+                text += u'%s' % attrs.Binding
         if not catnr and 'Label' in attrs.__dict__:
             text += u', %s' % attrs.Label
         if 'ReleaseDate' in attrs.__dict__:
