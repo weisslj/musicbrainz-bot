@@ -64,7 +64,7 @@ def discogs_get_release_packaging(discogs_release):
         colored_out(bcolors.HEADER, ' * Discogs format text: %s' % freetext)
         if 'cardboard' in freetext or 'paper' in freetext:
             return "cardboard/paper sleeve";
-        elif 'digipak' in freetext:
+        elif 'digipak' in freetext or 'digipack' in freetext:
             return "digipak";
         elif 'keepcase' in freetext:
             return "keep case";
