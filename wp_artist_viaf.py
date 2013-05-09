@@ -9,13 +9,16 @@ import sqlalchemy
 from editing import MusicBrainzClient
 import pprint
 import urllib
+import httplib2
 import time
+import socket
 from mbbot.utils.pidfile import PIDFile
 from mbbot.wp.wikipage import WikiPage
 from mbbot.wp.analysis import determine_authority_identifiers
 from utils import mangle_name, join_names, out, colored_out, bcolors
 import config as cfg
 
+WIKIPEDIA_RELATIONSHIP_TYPES = {'artist': 179}
 VIAF_RELATIONSHIP_TYPES = {'artist': 310}
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
@@ -39,7 +42,7 @@ WITH
     artists_wo_viaf AS (
         SELECT DISTINCT a.id AS artist_id, a.gid AS artist_gid, u.url AS wp_url
         FROM artist a
-            JOIN l_artist_url l ON l.entity0 = a.id AND l.link IN (SELECT id FROM link WHERE link_type = 179)
+            JOIN l_artist_url l ON l.entity0 = a.id AND l.link IN (SELECT id FROM link WHERE link_type = """+str(WIKIPEDIA_RELATIONSHIP_TYPES['artist'])+""")
             JOIN url u ON u.id = l.entity1 AND u.url LIKE 'http://%%.wikipedia.org/wiki/%%' AND substring(u.url from 8 for 2) IN ('en', 'fr')
         WHERE 
             /* No existing VIAF relationship */
@@ -72,14 +75,28 @@ def main():
         if 'VIAF' in identifiers:
             if not isinstance(identifiers['VIAF'], basestring):
                 colored_out(bcolors.FAIL, ' * multiple VIAF found: %s' % ', '.join(identifiers['VIAF']))
+            elif identifiers['VIAF'] == '' or identifiers['VIAF'] is None:
+                colored_out(bcolors.FAIL, ' * invalid empty VIAF found')
             else:
                 viaf_url = 'http://viaf.org/viaf/%s' % identifiers['VIAF']
                 edit_note = 'From %s' % (artist['wp_url'],)
                 colored_out(bcolors.OKGREEN, ' * found VIAF:', viaf_url)
-                out(' * edit note:', edit_note.replace('\n', ' '))
-                time.sleep(3)
-                mb.add_url('artist', artist['gid'], str(VIAF_RELATIONSHIP_TYPES['artist']), viaf_url, edit_note)
-                matched.add(artist['gid'])
+                # Check if this VIAF has not been deleted
+                skip = False
+                try:
+                    resp, content = httplib2.Http().request(viaf_url)
+                except socket.error:
+                    colored_out(bcolors.FAIL, ' * timeout!')
+                    skip = True
+                deleted_message = 'abandonedViafRecord'
+                if skip == False and (resp.status == '404' or deleted_message in content):
+                    colored_out(bcolors.FAIL, ' * deleted VIAF!')
+                    skip = True
+                if skip == False:
+                    time.sleep(3)
+                    out(' * edit note:', edit_note.replace('\n', ' '))
+                    mb.add_url('artist', artist['gid'], str(VIAF_RELATIONSHIP_TYPES['artist']), viaf_url, edit_note)
+                    matched.add(artist['gid'])
 
         if artist['processed'] is None and artist['gid'] not in seen:
             db.execute("INSERT INTO bot_wp_artist_viaf (gid, lang) VALUES (%s, %s)", (artist['gid'], page.lang))
