@@ -13,7 +13,7 @@ infobox_re['en'] = re.compile(r'\{\{Infobox (musical artist|person)[^|]*((?:[^{}
 infobox_re['fr'] = re.compile(r'\{\{Infobox (Musique \(artiste\)|Musique classique \(personnalit\xe9\))[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}', re.DOTALL)
 
 persondata_re = {}
-persondata_re['en'] = re.compile(r'\{\{Persondata[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}', re.DOTALL)
+persondata_re['en'] = re.compile(r'\{\{Persondata[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}?', re.DOTALL)
 persondata_re['fr'] = re.compile(r'\{\{Métadonn\xe9es personne[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}', re.DOTALL)
 
 persondata_fields_mapping = {}
@@ -29,10 +29,11 @@ persondata_fields_mapping['fr'] = {
 
 class WikiPage(object):
 
-    def __init__(self, title, text, lang):
+    def __init__(self, title, text, lang, wikidata_id = None):
         self.title = title
         self.text = text
         self.lang = lang
+        self.wikidata_id = wikidata_id
         self.categories = self.extract_page_categories(text)
         self.infobox = self.parse_infobox(text)
         self.persondata = self.parse_persondata(text)
@@ -82,4 +83,11 @@ class WikiPage(object):
         page_lang = m.group(1).encode('utf8')
         page_title = extract_page_title(url, page_lang)
         wp = MediaWiki('http://%s.wikipedia.org/w/api.php' % page_lang)
-        return cls(page_title, get_page_content(wp, page_title, page_lang, use_cache) or '', page_lang)
+        resp = wp.call({'action': 'query', 'prop': 'pageprops|revisions', 'titles': page_title.encode('utf8'), 'rvprop': 'content'})
+        page = resp['query']['pages'].values()[0]
+        content = page['revisions'][0].values()[0]
+        if 'pageprops' in page and 'wikibase_item' in page['pageprops']:
+            wikidata_id = page['pageprops']['wikibase_item']
+        else:
+            wikidata_id = None
+        return cls(page_title, content or '', page_lang, wikidata_id)
