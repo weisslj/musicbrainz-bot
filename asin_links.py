@@ -347,7 +347,8 @@ def main(verbose=False):
         if 'Binding' in attrs.__dict__:
             if 'NumberOfDiscs' in attrs.__dict__:
                 text += u'%s × ' % attrs.NumberOfDiscs
-            if attrs.Binding == 'Audio CD' and 'Format' in attrs.__dict__:
+            helpful_formats = ['Dual Disc']
+            if attrs.Binding == 'Audio CD' and 'Format' in attrs.__dict__ and attrs.Format in helpful_formats:
                 text += u'%s' % attrs.Format
             else:
                 text += u'%s' % attrs.Binding
