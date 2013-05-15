@@ -44,8 +44,7 @@ query_missing = '''
 SELECT r.id, r.gid, tn.name, t.position, m.position, url.url, a.id, a.gid, ac.id
 FROM release r
 JOIN medium m ON m.release = r.id
-JOIN tracklist tl ON tl.id = m.tracklist
-JOIN track t ON t.tracklist = tl.id
+JOIN track t ON t.medium = m.id
 JOIN track_name tn ON tn.id = t.name
 JOIN artist_credit ac ON ac.id = t.artist_credit
 JOIN artist_credit_name acn ON acn.artist_credit = ac.id
@@ -158,7 +157,7 @@ def main(verbose=False):
         if m_pos > 1:
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
-        artist_releases = set([r for r, in db.execute('''SELECT DISTINCT r.id FROM release r JOIN medium m ON m.release = r.id JOIN tracklist tl ON tl.id = m.tracklist JOIN track t ON t.tracklist = tl.id WHERE t.artist_credit = %s''', ac)])
+        artist_releases = set([r for r, in db.execute('''SELECT DISTINCT r.id FROM release r JOIN medium m ON m.release = r.id JOIN track t ON t.medium = m.id WHERE t.artist_credit = %s''', ac)])
         if len(artist_releases) > 1:
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
