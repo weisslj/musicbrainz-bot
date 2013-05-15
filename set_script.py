@@ -45,7 +45,7 @@ query_track_names = '''
 SELECT DISTINCT tn.name
 FROM release r
 JOIN medium m ON m.release = r.id
-JOIN track t ON t.tracklist = m.tracklist
+JOIN track t ON t.medium = m.id
 JOIN track_name tn ON t.name = tn.id
 WHERE r.id = %s
 '''
