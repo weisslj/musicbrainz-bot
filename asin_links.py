@@ -80,10 +80,9 @@ for loc, country_list in store_map:
 amazon_api = {}
 
 query_releases_without_asin = '''
-SELECT r.id, r.gid, r.barcode, release_name.name, r.artist_credit, c.iso_code, date_year, date_month, date_day
+SELECT r.id, r.gid, r.barcode, release_name.name, r.artist_credit
 FROM release r
 JOIN release_name ON r.name = release_name.id
-JOIN country c ON r.country = c.id
 JOIN artist_credit ac ON r.artist_credit = ac.id
 JOIN artist_name an ON ac.name = an.id
 JOIN artist_credit_name AS acn ON acn.artist_credit = r.artist_credit
@@ -108,8 +107,15 @@ WHERE r.edits_pending = 0 AND rs.name != 'Pseudo-Release' AND (r.comment IS NULL
     GROUP BY r.barcode
     HAVING COUNT(r.barcode) = 1
 )
-GROUP BY r.id, r.gid, r.barcode, release_name.name, c.iso_code, r.artist_credit, date_year, date_month, date_day
+GROUP BY r.id, r.gid, r.barcode, release_name.name, r.artist_credit
 ORDER BY r.artist_credit
+'''
+
+query_release_events = '''
+SELECT c.code, date_year, date_month, date_day
+FROM release_country rc
+JOIN iso_3166_1 AS c ON c.area = rc.country
+WHERE rc.release = %s
 '''
 
 # from https://github.com/metabrainz/musicbrainz-server/blob/master/root/static/scripts/edit/MB/Control/URLCleanup.js
@@ -224,7 +230,7 @@ def release_catnrs(r):
     return [cat for cat, in db.execute('''SELECT catalog_number FROM release_label WHERE release = %s''', r) if cat]
 
 def artist_countries(r):
-    return [country for country, in db.execute('''SELECT DISTINCT c.iso_code FROM release r JOIN artist_credit_name AS acn ON acn.artist_credit = r.artist_credit JOIN artist AS artist ON artist.id = acn.artist JOIN country c ON c.id = artist.country WHERE r.id = %s''', r) if country]
+    return [country for country, in db.execute('''SELECT DISTINCT c.code FROM release r JOIN artist_credit_name AS acn ON acn.artist_credit = r.artist_credit JOIN artist AS artist ON artist.id = acn.artist JOIN iso_3166_1 c ON c.area = artist.area WHERE r.id = %s''', r) if country]
 
 def cat_normalize(cat, country):
     if country == 'JP':
@@ -247,139 +253,140 @@ def cat_compare(a, b, country):
 
 def main(verbose=False):
     normal_edits_left, edits_left = mb.edits_left()
-    releases = [(r, gid, barcode, name, ac, country, year, month, day) for r, gid, barcode, name, ac, country, year, month, day in db.execute(query_releases_without_asin)]
+    releases = [(r, gid, barcode, name, ac) for r, gid, barcode, name, ac in db.execute(query_releases_without_asin)]
     count = len(releases)
-    for i, (r, gid, barcode, name, ac, country, year, month, day) in enumerate(releases):
-        if normal_edits_left <= 0:
-            break
-        if gid in asin_missing or gid in asin_problematic or gid in asin_nocover or gid in asin_catmismatch:
-            continue
-        if not barcode_type(barcode):
-            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
-            continue
-        if country not in store_map_rev:
-            continue
-        if barcode.lstrip('0') in barcodes_hist and barcodes_hist[barcode.lstrip('0')] > 1:
-            if verbose:
-                colored_out(bcolors.WARNING, '  two releases with same barcode, skip for now')
-            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
-            continue
-        if verbose:
-            colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
-        mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
-        try:
-            item = amazon_get_asin(barcode, country, mb_date)
-        except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
-            out(e)
-            continue
-        if item is None:
-            if verbose:
-                out(' * not found, continue')
-            db.execute("INSERT INTO bot_asin_missing (gid) VALUES (%s)", gid)
-            continue
-        url = amazon_url_cleanup(str(item.DetailPageURL), str(item.ASIN))
-        if verbose:
-            out(' * barcode matches %s' % url)
-        if item.ASIN in asins:
-            if verbose:
-                out('   * skip, ASIN already in DB')
-            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
-            continue
-        if not 'LargeImage' in item.__dict__:
-            if verbose:
-                out('   * skip, has no image')
-            db.execute("INSERT INTO bot_asin_nocover (gid) VALUES (%s)", gid)
-            continue
-        attrs = item.ItemAttributes
-        if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
-            if verbose:
-                out('   * skip, is marked as Import')
-            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
-            continue
-        if 'ReleaseDate' in attrs.__dict__:
-            amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
-            if abs(amazon_date - mb_date) > datetime.timedelta(days=365):
-                if verbose:
-                    out('   * skip, has release date diff > 365 days')
+    for i, (r, gid, barcode, name, ac) in enumerate(releases):
+        for country, year, month, day in db.execute(query_release_events, (r,)):
+            if normal_edits_left <= 0:
+                break
+            if gid in asin_missing or gid in asin_problematic or gid in asin_nocover or gid in asin_catmismatch:
+                continue
+            if not barcode_type(barcode):
                 db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
                 continue
-        else:
-            if verbose:
-                out('   * skip, has no release date')
-            db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
-            continue
-        amazon_name = unicode(attrs.Title)
-        catnr = None
-        if 'SeikodoProductCode' in attrs.__dict__:
-            catnr = unicode(attrs.SeikodoProductCode)
-        elif 'MPN' in attrs.__dict__:
-            catnr = unicode(attrs.MPN)
-        matched = False
-        if catnr:
-            for mb_catnr in release_catnrs(r):
-                if cat_compare(mb_catnr, catnr, country):
-                    matched = True
-                    break
-            if not matched and country == 'JP':
-                if verbose:
-                    colored_out(bcolors.FAIL, u' * CAT NR MISMATCH, ARGH!')
-                db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
+            if country not in store_map_rev:
                 continue
-        if not matched:
-            catnr = None
-            if not are_similar(name, amazon_name):
+            if barcode.lstrip('0') in barcodes_hist and barcodes_hist[barcode.lstrip('0')] > 1:
                 if verbose:
-                    colored_out(bcolors.FAIL, u'   * Similarity too small: %s <-> %s' % (name, amazon_name))
+                    colored_out(bcolors.WARNING, '  two releases with same barcode, skip for now')
                 db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
                 continue
-        if (gid, url) in asin_set:
             if verbose:
-                colored_out(bcolors.WARNING, u' * already linked earlier (probably got removed by some editor!)')
-            continue
-        text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
-        if catnr:
-            text += u'matching catalog numer “%s”, release name is “%s”' % (catnr, attrs.Title)
-        else:
-            text += u'has similar name “%s”' % attrs.Title
-        if 'Artist' in attrs.__dict__:
-            text += u' by “%s”' % attrs.Artist
-        text += u'.\nAmazon.com: '
-        if 'Binding' in attrs.__dict__:
-            if 'NumberOfDiscs' in attrs.__dict__:
-                text += u'%s × ' % attrs.NumberOfDiscs
-            helpful_formats = ['Dual Disc']
-            if attrs.Binding == 'Audio CD' and 'Format' in attrs.__dict__ and attrs.Format in helpful_formats:
-                text += u'%s' % attrs.Format
+                colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
+            mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
+            try:
+                item = amazon_get_asin(barcode, country, mb_date)
+            except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
+                out(e)
+                continue
+            if item is None:
+                if verbose:
+                    out(' * not found, continue')
+                db.execute("INSERT INTO bot_asin_missing (gid) VALUES (%s)", gid)
+                continue
+            url = amazon_url_cleanup(str(item.DetailPageURL), str(item.ASIN))
+            if verbose:
+                out(' * barcode matches %s' % url)
+            if item.ASIN in asins:
+                if verbose:
+                    out('   * skip, ASIN already in DB')
+                db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                continue
+            if not 'LargeImage' in item.__dict__:
+                if verbose:
+                    out('   * skip, has no image')
+                db.execute("INSERT INTO bot_asin_nocover (gid) VALUES (%s)", gid)
+                continue
+            attrs = item.ItemAttributes
+            if 'Format' in attrs.__dict__ and 'Import' in [f for f in attrs.Format]:
+                if verbose:
+                    out('   * skip, is marked as Import')
+                db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                continue
+            if 'ReleaseDate' in attrs.__dict__:
+                amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+                if abs(amazon_date - mb_date) > datetime.timedelta(days=365):
+                    if verbose:
+                        out('   * skip, has release date diff > 365 days')
+                    db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                    continue
             else:
-                text += u'%s' % attrs.Binding
-        if not catnr and 'Label' in attrs.__dict__:
-            text += u', %s' % attrs.Label
-        if 'ReleaseDate' in attrs.__dict__:
-            text += u', %s' % attrs.ReleaseDate
-        text += u'\nMusicBrainz: '
-        text += u'%s' % release_format(r)
-        if not catnr:
-            labels = release_labels(r)
-            if labels:
-                text += u', %s' % u' / '.join(labels)
-        if year:
-            text += u', %s' % date_format(year, month, day)
-        if catnr and country == 'JP':
-            text += u'\nhttp://amazon.jp/s?field-keywords=%s\nhttp://amazon.jp/s?field-keywords=%s' % (catnr, barcode)
-        else:
-            text += u'\nhttp://amazon.%s/s?field-keywords=%s' % (amazon_url_tld(url), barcode)
-        # make "Import" bold so it is easier recognizable
-        re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
-        text = re_bold_import.sub(ur"'''\1'''", text)
-        text += '\n\n%s' % program_string(__file__)
-        try:
-            colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
-            mb.add_url('release', gid, 77, url, text)
-            db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
-            asins.add(url)
-            normal_edits_left -= 1
-        except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
-            out(e)
+                if verbose:
+                    out('   * skip, has no release date')
+                db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                continue
+            amazon_name = unicode(attrs.Title)
+            catnr = None
+            if 'SeikodoProductCode' in attrs.__dict__:
+                catnr = unicode(attrs.SeikodoProductCode)
+            elif 'MPN' in attrs.__dict__:
+                catnr = unicode(attrs.MPN)
+            matched = False
+            if catnr:
+                for mb_catnr in release_catnrs(r):
+                    if cat_compare(mb_catnr, catnr, country):
+                        matched = True
+                        break
+                if not matched and country == 'JP':
+                    if verbose:
+                        colored_out(bcolors.FAIL, u' * CAT NR MISMATCH, ARGH!')
+                    db.execute("INSERT INTO bot_asin_catmismatch (gid) VALUES (%s)", gid)
+                    continue
+            if not matched:
+                catnr = None
+                if not are_similar(name, amazon_name):
+                    if verbose:
+                        colored_out(bcolors.FAIL, u'   * Similarity too small: %s <-> %s' % (name, amazon_name))
+                    db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
+                    continue
+            if (gid, url) in asin_set:
+                if verbose:
+                    colored_out(bcolors.WARNING, u' * already linked earlier (probably got removed by some editor!)')
+                continue
+            text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
+            if catnr:
+                text += u'matching catalog numer “%s”, release name is “%s”' % (catnr, attrs.Title)
+            else:
+                text += u'has similar name “%s”' % attrs.Title
+            if 'Artist' in attrs.__dict__:
+                text += u' by “%s”' % attrs.Artist
+            text += u'.\nAmazon.com: '
+            if 'Binding' in attrs.__dict__:
+                if 'NumberOfDiscs' in attrs.__dict__:
+                    text += u'%s × ' % attrs.NumberOfDiscs
+                helpful_formats = ['Dual Disc']
+                if attrs.Binding == 'Audio CD' and 'Format' in attrs.__dict__ and attrs.Format in helpful_formats:
+                    text += u'%s' % attrs.Format
+                else:
+                    text += u'%s' % attrs.Binding
+            if not catnr and 'Label' in attrs.__dict__:
+                text += u', %s' % attrs.Label
+            if 'ReleaseDate' in attrs.__dict__:
+                text += u', %s' % attrs.ReleaseDate
+            text += u'\nMusicBrainz: '
+            text += u'%s' % release_format(r)
+            if not catnr:
+                labels = release_labels(r)
+                if labels:
+                    text += u', %s' % u' / '.join(labels)
+            if year:
+                text += u', %s' % date_format(year, month, day)
+            if catnr and country == 'JP':
+                text += u'\nhttp://amazon.jp/s?field-keywords=%s\nhttp://amazon.jp/s?field-keywords=%s' % (catnr, barcode)
+            else:
+                text += u'\nhttp://amazon.%s/s?field-keywords=%s' % (amazon_url_tld(url), barcode)
+            # make "Import" bold so it is easier recognizable
+            re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
+            text = re_bold_import.sub(ur"'''\1'''", text)
+            text += '\n\n%s' % program_string(__file__)
+            try:
+                colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
+                mb.add_url('release', gid, 77, url, text)
+                db.execute("INSERT INTO bot_asin_set (gid,url) VALUES (%s,%s)", (gid,url))
+                asins.add(url)
+                normal_edits_left -= 1
+            except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
+                out(e)
 
 if __name__ == '__main__':
     parser = OptionParser()
