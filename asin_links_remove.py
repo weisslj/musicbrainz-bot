@@ -6,9 +6,11 @@ import socket
 import datetime
 from collections import defaultdict
 from optparse import OptionParser
+
 import sqlalchemy
 import Levenshtein
 import amazonproduct
+
 from editing import MusicBrainzClient
 import config as cfg
 from utils import out, program_string, asciipunct
@@ -305,15 +307,6 @@ def main(verbose=False):
                 if 'NumberOfDiscs' in attrs.__dict__:
                     text += u'%s × ' % attrs.NumberOfDiscs
                 text += u'%s' % attrs.Binding
-            #if 'Label' in attrs.__dict__:
-            #    text += u', %s' % attrs.Label
-            #catnr = None
-            #if 'SeikodoProductCode' in attrs.__dict__:
-            #    catnr = unicode(attrs.SeikodoProductCode)
-            #elif 'MPN' in attrs.__dict__:
-            #    catnr = unicode(attrs.MPN)
-            #if catnr:
-            #    text += u', %s' % catnr
             if 'ReleaseDate' in attrs.__dict__:
                 text += u', %s' % attrs.ReleaseDate
             text += u', %s %s' % (barcode_type(asin_barcode), asin_barcode)
@@ -335,5 +328,5 @@ if __name__ == '__main__':
     parser.add_option('-v', '--verbose', action='store_true', default=False,
             help='be more verbose')
     (options, args) = parser.parse_args()
-    with PIDFile('/tmp/mbbot_asin_links.pid'):
+    with PIDFile('/tmp/mbbot_asin_links_remove.pid'):
         main(options.verbose)
