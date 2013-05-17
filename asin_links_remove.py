@@ -75,7 +75,7 @@ for loc, country_list in store_map:
 amazon_api = {}
 
 query_releases_with_duplicate_asin = '''
-SELECT q.url, lru.id, r.id, r.gid, r.barcode, rn.name, r.artist_credit, c.iso_code, date_year, date_month, date_day
+SELECT q.url, lru.id, r.id, r.gid, r.barcode, rn.name, r.artist_credit
 FROM
     (
         SELECT
@@ -89,13 +89,12 @@ FROM
     ) AS q
     JOIN l_release_url lru ON lru.entity1 = q.id
     JOIN release r ON r.id = lru.entity0
-    JOIN country c ON r.country = c.id
     JOIN release_status AS rs ON r.status = rs.id
     JOIN release_name rn ON rn.id = r.name
     JOIN artist_credit ac ON r.artist_credit = ac.id
     JOIN artist_name an ON ac.name = an.id
 WHERE r.edits_pending = 0 AND lru.edits_pending = 0 AND rs.name != 'Pseudo-Release' AND r.barcode IS NOT NULL AND r.barcode != ''
-GROUP BY q.url, lru.id, r.id, r.gid, r.barcode, rn.name, c.iso_code, r.artist_credit, date_year, date_month, date_day
+GROUP BY q.url, lru.id, r.id, r.gid, r.barcode, rn.name, r.artist_credit
 ORDER BY r.artist_credit
 '''
 
@@ -194,62 +193,25 @@ def release_format(r):
     text.append(u'%d × %s' % (hist[last], last))
     return u', '.join(text)
 
-def date_format(year, month, day):
-    if day:
-        return u'%04d-%02d-%02d' % (year, month, day)
-    if month:
-        return u'%04d-%02d' % (year, month)
-    if year:
-        return u'%04d' % year
-    return u'-'
-
-def release_labels(r):
-    return [name for name, in db.execute('''SELECT ln.name FROM release_label rl JOIN label l ON rl.label = l.id JOIN label_name ln ON l.name = ln.id WHERE rl.release = %s''', r)]
-
-def release_catnrs(r):
-    return [cat for cat, in db.execute('''SELECT catalog_number FROM release_label WHERE release = %s''', r) if cat]
-
-def artist_countries(r):
-    return [country for country, in db.execute('''SELECT DISTINCT c.iso_code FROM release r JOIN artist_credit_name AS acn ON acn.artist_credit = r.artist_credit JOIN artist AS artist ON artist.id = acn.artist JOIN country c ON c.id = artist.country WHERE r.id = %s''', r) if country]
-
-def cat_normalize(cat, country):
-    if country == 'JP':
-        cat = re.sub(ur'[^A-Za-z0-9. -]+', ur'', cat)
-        m = re.match(ur'^([0-9a-zA-Z]+)[ .-]*([0-9]+)(?:[^0-9]|$)', cat)
-        if m:
-            cat = (u'%s%s' % m.groups()).upper()
-            m = re.match(ur'^([A-Z]+)0*([0-9]+.*)$', cat)
-            if m:
-                cat = u'%s%s' % m.groups()
-            return cat
-        return None
-    else:
-        return re.sub(r'[ -]+', r'', cat).upper()
-
-def cat_compare(a, b, country):
-    a = cat_normalize(a, country)
-    b = cat_normalize(b, country)
-    return a and b and a == b
-
 def artist_credit(ac):
     return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
 
 def format_release(release):
-    rel_id, r, gid, barcode, name, ac, country, year, month, day = release
-    return u'“%s” by “%s”, %s, %s, %s, %s %s' % (name, artist_credit(ac), release_format(r), country, date_format(year, month, day), barcode_type(barcode), barcode)
+    rel_id, r, gid, barcode, name, ac = release
+    return u'“%s” by “%s”, %s, %s, %s' % (name, artist_credit(ac), release_format(r), barcode_type(barcode), barcode)
 
 def format_release2(release):
-    rel_id, r, gid, barcode, name, ac, country, year, month, day = release
-    return u'  http://musicbrainz.org/release/%s “%s” by “%s”, %s, %s, %s, %s %s' % (gid, name, artist_credit(ac), release_format(r), country, date_format(year, month, day), barcode_type(barcode), barcode)
+    rel_id, r, gid, barcode, name, ac = release
+    return u'  http://musicbrainz.org/release/%s “%s” by “%s”, %s, %s, %s' % (gid, name, artist_credit(ac), release_format(r), barcode_type(barcode), barcode)
 
 def main(verbose=False):
-    edits_left = mb.edits_left()
+    normal_edits_left, edits_left = mb.edits_left()
     releases_by_url = defaultdict(list)
-    for url, rel_id, r, gid, barcode, name, ac, country, year, month, day in db.execute(query_releases_with_duplicate_asin):
-        releases_by_url[url] += [(rel_id, r, gid, barcode, name, ac, country, year, month, day)]
+    for url, rel_id, r, gid, barcode, name, ac in db.execute(query_releases_with_duplicate_asin):
+        releases_by_url[url] += [(rel_id, r, gid, barcode, name, ac)]
     count = len(releases_by_url)
     for i, (url, releases) in enumerate(releases_by_url.iteritems()):
-        if edits_left <= 0:
+        if normal_edits_left <= 0:
             break
         if url in asin_problematic or url in asin_missing or url in asin_no_barcode:
             continue
@@ -280,9 +242,9 @@ def main(verbose=False):
         matched = []
         not_matched = []
         for release in releases:
-            rel_id, r, gid, barcode, name, ac, country, year, month, day = release
+            rel_id, r, gid, barcode, name, ac = release
             if verbose:
-                out(u'  %s http://musicbrainz.org/release/%s %s %s' % (name, gid, barcode, country))
+                out(u'  %s http://musicbrainz.org/release/%s %s' % (name, gid, barcode))
             if barcode.lstrip('0') == asin_barcode.lstrip('0'):
                 if verbose:
                     out(u'    matched')
@@ -314,12 +276,12 @@ def main(verbose=False):
             for matched_release in matched:
                 text += u'%s\n' % format_release2(matched_release)
             text += '\n\n%s' % program_string(__file__)
-            rel_id, r, gid, barcode, name, ac, country, year, month, day = not_matched_release
+            rel_id, r, gid, barcode, name, ac = not_matched_release
             try:
                 out(u'http://musicbrainz.org/release/%s  remove  %s' % (gid,url))
                 mb.remove_relationship(rel_id, 'release', 'url', text)
                 db.execute("INSERT INTO bot_asin_removed (gid,url) VALUES (%s,%s)", (gid,url))
-                edits_left -= 1
+                normal_edits_left -= 1
             except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
                 out(e)
 
