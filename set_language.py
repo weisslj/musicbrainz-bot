@@ -8,7 +8,9 @@ import itertools
 import pprint
 import urllib2
 import socket
+
 import sqlalchemy
+
 from utils import out, program_string
 from mbbot.utils.pidfile import PIDFile
 from editing import MusicBrainzClient
