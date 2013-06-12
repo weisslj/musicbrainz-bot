@@ -82,7 +82,7 @@ def main(ENTITY_TYPE):
             colored_out(bcolors.OKGREEN, ' * found WikiData identifier:', wikidata_url)
             time.sleep(3)
             out(' * edit note:', edit_note.replace('\n', ' '))
-            mb.add_url(ENTITY_TYPE.replace('-', '_'), entity['gid'], str(WIKIDATA_RELATIONSHIP_TYPES[ENTITY_TYPE]), wikidata_url, edit_note)
+            mb.add_url(ENTITY_TYPE.replace('-', '_'), entity['gid'], str(WIKIDATA_RELATIONSHIP_TYPES[ENTITY_TYPE]), wikidata_url, edit_note, True)
             matched.add(entity['gid'])
 
         if entity['processed'] is None and entity['gid'] not in seen:
