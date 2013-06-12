@@ -345,7 +345,7 @@ def main(verbose=False):
                 continue
             text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
             if catnr:
-                text += u'matching catalog numer “%s”, release name is “%s”' % (catnr, attrs.Title)
+                text += u'matching catalog number “%s”, release name is “%s”' % (catnr, attrs.Title)
             else:
                 text += u'has similar name “%s”' % attrs.Title
             if 'Artist' in attrs.__dict__:
