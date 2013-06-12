@@ -241,13 +241,15 @@ for release in db.execute(query):
             colored_out(bcolors.WARNING, ' * Spotify = https://embed.spotify.com/?uri=%s&view=coverart' % (albums[0]['href'],))
             image_url = spotify.artwork_url(albums[0]['href'])
             if image_url is not None:
-                img_file = urllib2.urlopen(image_url)
-                im = Image.open(StringIO(img_file.read()))
-                spotify_score = im.size[0] * im.size[1]
-                colored_out(bcolors.NONE, ' * Spotify score:\t%s \t %s' % (spotify_score, image_url))
-                if spotify_score > best_score:
-                    front_uri = image_url
-                    best_score = spotify_score
+                try:
+                    img_file = urllib2.urlopen(image_url)
+                    im = Image.open(StringIO(img_file.read()))
+                    spotify_score = im.size[0] * im.size[1]
+                    colored_out(bcolors.NONE, ' * Spotify score:\t%s \t %s' % (spotify_score, image_url))
+                    if spotify_score > best_score:
+                        front_uri = image_url
+                        best_score = spotify_score
+                except urllib2.HTTPError, e: pass
 
     # Evaluate iTunes
     if release['barcode'] is not None and release['barcode'] != "":
