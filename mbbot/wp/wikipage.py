@@ -85,7 +85,7 @@ class WikiPage(object):
         wp = MediaWiki('http://%s.wikipedia.org/w/api.php' % page_lang)
         resp = wp.call({'action': 'query', 'prop': 'pageprops|revisions', 'titles': page_title.encode('utf8'), 'rvprop': 'content'})
         page = resp['query']['pages'].values()[0]
-        content = page['revisions'][0].values()[0]
+        content = page['revisions'][0].values()[0] if 'revisions' in page else None
         if 'pageprops' in page and 'wikibase_item' in page['pageprops']:
             wikidata_id = page['pageprops']['wikibase_item']
         else:
