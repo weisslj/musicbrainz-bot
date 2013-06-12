@@ -7,8 +7,11 @@ import time
 import urllib2
 import json
 from editing import MusicBrainzClient
-from utils import out, colored_out, bcolors
+from utils import out, colored_out, bcolors, monkeypatch_mechanize
 import config as cfg
+
+# Work around mechanize bug. See: https://github.com/jjlee/mechanize/pull/58
+monkeypatch_mechanize()
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 

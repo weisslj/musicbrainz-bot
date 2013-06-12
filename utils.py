@@ -41,23 +41,29 @@ def join_names(type, strings):
 
 script_ranges = {}
 script_regexes = {}
-for line in open('Scripts.txt'):
-    line = line.strip()
-    if line.startswith('#') or not line:
-        continue
-    parts = line.split(';', 2)
-    range_str = parts[0].strip()
-    script = parts[1].split()[0]
-    if '..' in range_str:
-        range = tuple(int(a, 16) for a in range_str.split('..'))
-    else:
-        range = (int(range_str, 16), int(range_str, 16))
-    if script in script_ranges and range[0] - script_ranges[script][-1][1] == 1:
-        script_ranges[script][-1] = (script_ranges[script][-1][0], range[1])
-    else:
-        script_ranges.setdefault(script, []).append(range)
+def parse_scripts():
+    if script_ranges:
+        # Already parsed
+        return
+
+    for line in open('Scripts.txt'):
+        line = line.strip()
+        if line.startswith('#') or not line:
+            continue
+        parts = line.split(';', 2)
+        range_str = parts[0].strip()
+        script = parts[1].split()[0]
+        if '..' in range_str:
+            range = tuple(int(a, 16) for a in range_str.split('..'))
+        else:
+            range = (int(range_str, 16), int(range_str, 16))
+        if script in script_ranges and range[0] - script_ranges[script][-1][1] == 1:
+            script_ranges[script][-1] = (script_ranges[script][-1][0], range[1])
+        else:
+            script_ranges.setdefault(script, []).append(range)
 
 def is_in_script(text, scripts):
+    parse_scripts()
     regex = ''
     for script in scripts:
         script_regex = script_regexes.get(script, '')
@@ -75,6 +81,7 @@ def is_in_script(text, scripts):
 
 
 def contains_text_in_script(text, scripts):
+    parse_scripts()
     regex = ''
     for script in scripts:
         for range in script_ranges[script]:
@@ -237,3 +244,25 @@ def structureToString(obj):
         for key in sorted(obj.iterkeys()):
             ret.append("%s:%s" % ( key, structureToString(obj[key]) ))
         return '{' + ",".join(ret) + '}'
+
+def monkeypatch_mechanize():
+    """Work-around for a mechanize 0.2.5 bug. See: https://github.com/jjlee/mechanize/pull/58"""
+    import mechanize
+    if mechanize.__version__ < (0, 2, 6):
+        from mechanize._form import SubmitControl, ScalarControl
+
+        def __init__(self, type, name, attrs, index=None):
+            ScalarControl.__init__(self, type, name, attrs, index)
+            # IE5 defaults SUBMIT value to "Submit Query"; Firebird 0.6 leaves it
+            # blank, Konqueror 3.1 defaults to "Submit".  HTML spec. doesn't seem
+            # to define this.
+            if self.value is None:
+                if self.disabled:
+                    self.disabled = False
+                    self.value = ""
+                    self.disabled = True
+                else:
+                    self.value = ""
+            self.readonly = True
+
+        SubmitControl.__init__ = __init__
