@@ -59,6 +59,9 @@ WITH
         SELECT r.id, discogs_url.url as discogs_url, amz_url.url AS amz_url
         FROM release r
             JOIN release_meta rm ON rm.id = r.id
+            LEFT JOIN release_country rc ON rc.release = r.id
+            LEFT JOIN area ON area.id = rc.country
+            LEFT JOIN iso_3166_1 iso ON iso.area = area.id
             LEFT JOIN l_release_url discogs_link ON discogs_link.entity0 = r.id AND discogs_link.link IN (SELECT id FROM link WHERE link_type = 76)
                 AND discogs_link.edits_pending = 0
             LEFT JOIN url discogs_url ON discogs_url.id = discogs_link.entity1
@@ -66,7 +69,6 @@ WITH
                 AND amz_link.edits_pending = 0
             LEFT JOIN url amz_url ON amz_url.id = amz_link.entity1
             LEFT JOIN release_status rs ON r.status = rs.id
-            LEFT JOIN country rc ON rc.id = r.country
             LEFT JOIN (SELECT encycl_link.entity0, encycl_link.entity1, encycl_url.url
                 FROM l_release_url encycl_link
                 JOIN url encycl_url ON encycl_url.id = encycl_link.entity1 AND encycl_url.url ~ 'encyclopedisque.fr/images/'
@@ -84,9 +86,10 @@ WITH
                 EXISTS (SELECT 1
                     FROM artist_credit_name acn
                     JOIN artist a ON acn.artist = a.id
-                    JOIN country c ON a.country = c.id
+                    JOIN area c ON a.area = c.id
+                    JOIN iso_3166_1 iso ON iso.area = area.id
                     WHERE r.artist_credit = acn.artist_credit
-                        AND (c.iso_code = 'FR' OR a.id = 1) AND (a.id <> 1 OR rc.iso_code = 'FR')
+                        AND (iso.code = 'FR' OR a.id = 1) AND (a.id <> 1 OR iso.code = 'FR')
                 )
                 /* Discogs link should only be linked to this release */
                 AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = discogs_url.id AND l.entity0 <> r.id)
