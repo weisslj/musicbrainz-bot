@@ -137,6 +137,17 @@ def get_annotation(rel_id):
         return ann[0]
     return None
 
+def qual2name(quality):
+    """Converts quality number to junk/low/medium/high"""
+    if quality < QUALITY_THRESHOLD:
+        return 'junk'
+    elif quality < 50:
+        return 'low'
+    elif quality < 150:
+        return 'medium'
+    else:
+        return 'high'
+
 def handle_release(release):
     # May have multiple cover images with the same barcode
     codes = set()
@@ -162,7 +173,7 @@ def handle_release(release):
         if not symbols:
             txn_ids.append("%s # No barcode" % txn_id)
         for sym in symbols:
-            txn_my = txn_id + " # %(type)s: %(data)s (confidence %(quality)d @ scale %(scale)s)" % sym
+            txn_my = txn_id + " # %(type)s: %(data)s (confidence %(quality)d) [scale %(scale)s]" % sym
             print txn_my
             txn_ids.append(txn_my)
             if sym['type'] in symtypes and sym['quality'] >= QUALITY_THRESHOLD:
@@ -174,8 +185,9 @@ def handle_release(release):
                     codes.add(sym['data'])
                 sym['url'] = url
                 sym['art_type'] = art_type_map[art_type]
-                note += ("Recognized %(type)s: %(data)s from %(art_type)s cover image %(url)s"
-                         " (confidence %(quality)d @ scale %(scale)s)\n") % sym
+                sym['qualname'] = qual2name(sym['quality'])
+                note += ("Recognized '''%(type)s:''' %(data)s from %(art_type)s cover image %(url)s\n"+
+                         "'''Confidence:''' %(qualname)s %(quality)d [scale %(scale)s]\n") % sym
 
     if not txn_ids:
         # Nothing to do
