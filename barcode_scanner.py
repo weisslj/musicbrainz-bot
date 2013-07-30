@@ -26,6 +26,7 @@ except ImportError:
 CAA_SITE = 'https://coverartarchive.org/beta'
 CAA_CACHE = 'caa-cache'
 QUALITY_THRESHOLD = 3
+TRY_SCALES = [1, 0.75, 0.5, 0.2]
 
 if not os.path.exists(CAA_CACHE):
     os.mkdir(CAA_CACHE)
@@ -63,20 +64,25 @@ symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
 
 def scan_barcode(img):
     gray = img.convert('L')
-    ow, oh = gray.size
+    ow, oh = gray.size  # Original dimensions
     symbols = {}
 
     scanner = zbar.ImageScanner()
     for type in symtypes:
         scanner.set_config(type, zbar.Config.ENABLE, 1)
 
-    for scale in [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.5, 0.4, 0.3, 0.2]:
+    # Try scaling the image at different sizes. In high-resolution scans, scan
+    # or print artifacts can confuse the scanner.
+    for scale in TRY_SCALES:
         w = int(ow * scale)
         h = int(oh * scale)
 
         if scale == 1:
             img = gray
         else:
+            if max(h, w) < 400:
+                # Resolution too low, give up. (We always try at scale==1)
+                break
             img = gray.resize((w, h), Image.BICUBIC)
             assert gray.size != img.size
 
