@@ -43,7 +43,7 @@ def get_score(src, dest):
     rels = []
 
     cur.execute("""\
-        SELECT laa.id, short_link_phrase, link_type
+        SELECT laa.id, long_link_phrase, link_type
         FROM l_artist_artist laa
         JOIN link l ON (laa.link=l.id)
         JOIN link_type lt ON (lt.id=link_type)
@@ -53,7 +53,7 @@ def get_score(src, dest):
             # Wrong relationship type, can't handle that
             return -1, rels, comment
         score += 1
-        comment += u"Relationship: %s %s %s\n" % (dest.description, clean_link_phrase(link.short_link_phrase), src.name)
+        comment += u"Relationship: %s %s %s\n" % (dest.description, clean_link_phrase(link.long_link_phrase), src.name)
         rels.append(link)
 
     # Holy shitfuck!
@@ -64,19 +64,12 @@ def get_score(src, dest):
             string_agg(distinct t2.number, ', ' order by t2.number) as dest_tracks
         FROM release r
         JOIN release_name rn ON (r.name=rn.id)
-            /* FROM artist_credit_name acn1
-            JOIN artist_credit ac1 ON (ac1.name=acn1.id)
-            JOIN track t1 ON (t1.artist_credit=ac1.id)
-            JOIN tracklist tl1 ON (t1.tracklist=tl1.id)
-            JOIN medium m1 ON (m1.tracklist=tl1.id)*/
         JOIN medium m1 ON (m1.release=r.id)
-            JOIN tracklist tl1 ON (m1.tracklist=tl1.id)
-            JOIN track t1 ON (t1.tracklist=tl1.id)
+            JOIN track t1 ON (t1.medium=m1.id)
             JOIN artist_credit ac1 ON (t1.artist_credit=ac1.id)
             JOIN artist_credit_name acn1 ON (ac1.id=acn1.artist_credit)
         JOIN medium m2 ON (m2.release=r.id)
-            JOIN tracklist tl2 ON (m2.tracklist=tl2.id)
-            JOIN track t2 ON (t2.tracklist=tl2.id)
+            JOIN track t2 ON (t2.medium=m2.id)
             JOIN artist_credit ac2 ON (t2.artist_credit=ac2.id)
             JOIN artist_credit_name acn2 ON (ac2.id=acn2.artist_credit)
         WHERE ac1.artist_count=1
