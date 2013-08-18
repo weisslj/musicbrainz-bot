@@ -549,9 +549,9 @@ class MusicBrainzClient(object):
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
 
-    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False, convertToJPEG=False):
+    def add_cover_art(self, release_gid, image, types=[], position=None, comment=u'', edit_note=u'', auto=False):
 
-        # download image if it's remotely hosted
+        # Download image if it's remotely hosted
         image_is_remote = True if image.startswith(('http://', 'https://', 'ftp://')) else False
         if image_is_remote:
             u = urllib2.urlopen(image)
@@ -563,23 +563,31 @@ class MusicBrainzClient(object):
         else:
             localFile = image
 
-        # convert image to JPEG if needed (until CAA supports other formats)
+        # Determine mime type
         f, ext = os.path.splitext(localFile)
-        if convertToJPEG and not ext.lower().endswith(('jpeg', 'jpg')):
-            out(' * converting image %s to JPEG' % localFile)
-            im = Image.open(localFile)
-            if im.mode != "RGB":
-                im = im.convert("RGB")
-            outfile = f + ".jpg"
-            im.save(outfile, "JPEG")
-            if image_is_remote:
-                os.remove(localFile)
-            localFile = outfile
+        mime_type = None
+        if re.match(r'\.j(peg|pg|pe|fif|if)$', ext, re.I):
+            mime_type = "image/jpeg"
+        elif re.match(r'\.png$', ext, re.I):
+            mime_type = "image/png"
+        elif re.match(r'\.gif$', ext, re.I):
+            mime_type = "image/gif"
+
+        if not mime_type:
+            raise Exception('Unsupported image type: %s' % ext)
 
         self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
         page = self.b.response().read()
 
-        # upload cover art
+        # Generate a new cover art id, as done by mbserver
+        cover_art_id = int((time.time()-1327528905)*100)
+
+        # Step 1: Request POST fields for CAA from http://musicbrainz.org/ws/js/cover-art-upload
+        request = urllib2.Request('http://musicbrainz.org/ws/js/cover-art-upload/%s?image_id=%s&mime_type=%s&redirect=true' % (release_gid, cover_art_id, mime_type), headers={"Accept" : "application/json"})
+        data = urllib2.urlopen(request)
+        postfields = json.load(data)['formdata']
+
+        # Step 2: Upload cover art to CAA
         self.b.follow_link(tag="iframe")
         TRIES = 4
         DELAY = 3
@@ -588,6 +596,10 @@ class MusicBrainzClient(object):
             try:
                 self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
                 self.b.add_file(open(localFile))
+                # Insert fields from ws/js, simulating what's done in javascript
+                for key, value in postfields.iteritems():
+                    self.b.new_control('hidden', key, {'value': str(value)})
+                self.b.fixup()
                 self.b.submit()
                 break
             except (urllib2.HTTPError, urllib2.URLError):
@@ -600,7 +612,7 @@ class MusicBrainzClient(object):
         if "parent.document.getElementById" not in page:
             raise Exception('Error uploading cover art file')
 
-        # submit the edit
+        # Step 3: Submit the edit
         self.b.back(2)
         # Will probably fail. Solution is to install patched mechanize:
         # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
@@ -621,6 +633,7 @@ class MusicBrainzClient(object):
             self.b['add-cover-art.comment'] = comment.encode('utf8')
         if edit_note:
             self.b['add-cover-art.edit_note'] = edit_note.encode('utf8')
+        self.b['add-cover-art.mime_type'] = [mime_type]
         self.b.submit()
 
         if image_is_remote:

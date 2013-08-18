@@ -272,7 +272,7 @@ def upload_covers(covers, mbid):
         print "Uploading %r (%s) from %r" % (types, cov['size_pretty'], cov['file'])
         # Doesn't work: position = '0' if cov['type'] == 'front' else None
         # ValueError: control 'add-cover-art.position' is readonly
-        mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False, False)
+        mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False)
 
         done(upload_id)
 

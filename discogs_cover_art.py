@@ -226,7 +226,7 @@ def submit_cover_art(release, url, types):
         im = Image.open(StringIO(img_file.read()))
         edit_note = "'''Dimension''': %sx%s\n'''Source''': %s" % (im.size[0], im.size[1], url)
         time.sleep(5)
-        mb.add_cover_art(release, url, types, None, u'', edit_note, False, True)
+        mb.add_cover_art(release, url, types, None, u'', edit_note, False)
         save_processed(release, url)
 
 for release in db.execute(query):

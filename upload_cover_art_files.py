@@ -63,4 +63,4 @@ for file in sys.argv[1:]:
 
 	colored_out(bcolors.OKGREEN, " * Adding %s cover art to http://musicbrainz.org/release/%s" % (type, mbid))
 	time.sleep(10)
-	mb.add_cover_art(mbid, file, [type], None, '', '', False, True)
+	mb.add_cover_art(mbid, file, [type], None, '', '', False)
