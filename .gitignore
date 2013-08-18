@@ -5,3 +5,5 @@ config.py
 /solr
 /wiki-cache
 /acc-cache
+/caa-cache
+*.db
