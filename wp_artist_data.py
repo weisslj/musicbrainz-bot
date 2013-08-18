@@ -42,7 +42,7 @@ CREATE TABLE bot_wp_artist_data_ignore (
 
 query = """
 SELECT DISTINCT
-    a.id, a.gid, a.name, a.country, a.type, a.gender,
+    a.id, a.gid, a.name, a.area, a.type, a.gender,
     a.begin_date_year,
     a.begin_date_month,
     a.begin_date_day,
@@ -59,7 +59,7 @@ LEFT JOIN bot_wp_artist_data_ignore bi ON a.gid = bi.gid
 WHERE
     bi.gid IS NULL AND
     (
-        a.country IS NULL OR
+        a.area IS NULL OR
         a.type IS NULL OR
         ((a.type IS NULL OR a.type = 1) AND (a.begin_date_year IS NULL OR a.end_date_year IS NULL OR a.gender IS NULL)) OR
         ((a.type IS NULL OR a.type = 2) AND (a.begin_date_year IS NULL))
@@ -77,14 +77,8 @@ WHERE link IN (SELECT id FROM link WHERE link_type = 108)
 AND entity1 = %s
 """
 
-ipi_codes_query = """
-SELECT ipi from artist_ipi
-WHERE artist = %s
-ORDER BY ipi
-"""
-
 country_ids = {}
-for id, code in db.execute("SELECT id, iso_code FROM country"):
+for id, code in db.execute("SELECT area, code FROM iso_3166_1"):
     country_ids[code] = id
 
 gender_ids = {}
@@ -110,12 +104,12 @@ def main():
 
         page = WikiPage.fetch(artist['url'], False)
 
-        if not artist['country']:
+        if not artist['area']:
             country, country_reasons = determine_country(page)
             if country:
                 country_id = country_ids[country]
-                artist['country'] = country_id
-                update.add('country')
+                artist['area'] = country_id
+                update.add('area')
                 reasons.append(('COUNTRY', country_reasons))
 
         if not artist['type']:
@@ -159,9 +153,6 @@ def main():
                 reasons.append(('END DATE', end_date_reasons))
 
         if update:
-            artist['ipi_codes'] = []
-            for (ipi,) in db.execute(ipi_codes_query, artist['id']):
-                artist['ipi_codes'].append(ipi)
             edit_note = 'From %s' % (artist['url'],)
             for field, reason in reasons:
                 edit_note += '\n\n%s:\n%s' % (field, ' '.join(reason))
@@ -175,5 +166,5 @@ def main():
             db.execute("UPDATE bot_wp_artist_data SET processed = now() WHERE (gid, lang) = (%s, %s)", (artist['gid'], wp_lang))
 
 if __name__ == '__main__':
-    with PIDFile('/tmp/mbbot_wp_artist_country.pid'):
+    with PIDFile('/tmp/mbbot_wp_artist_data.pid'):
         main()

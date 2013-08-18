@@ -169,11 +169,12 @@ class MusicBrainzClient(object):
     def edit_artist(self, artist, update, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (artist['gid'],)))
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
-        if 'country' in update:
-            if self.b["edit-artist.country_id"] != ['']:
-                print " * country already set, not changing"
+        self.b.set_all_readonly(False)
+        if 'area' in update:
+            if self.b["edit-artist.area_id"] != '':
+                print " * area already set, not changing"
                 return
-            self.b["edit-artist.country_id"] = [str(artist['country'])]
+            self.b["edit-artist.area_id"] = str(artist['area'])
         if 'type' in update:
             if self.b["edit-artist.type_id"] != ['']:
                 print " * type already set, not changing"
@@ -209,9 +210,6 @@ class MusicBrainzClient(object):
                 print " * comment already set, not changing"
                 return
             self.b["edit-artist.comment"] = artist['comment'].encode('utf-8')
-        for idx, ipi in enumerate(artist['ipi_codes']):
-            self.b.new_control('text', 'edit-artist.ipi_codes.%s'%idx, {'value': str(ipi)})
-        self.b.fixup()
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
         try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
