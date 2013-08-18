@@ -617,6 +617,7 @@ class MusicBrainzClient(object):
         # Will probably fail. Solution is to install patched mechanize:
         # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
         self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
+        self.b.set_all_readonly(False)
         try: self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
         except mechanize._form.ControlNotFoundError: pass
         submitted_types = []
@@ -634,6 +635,7 @@ class MusicBrainzClient(object):
         if edit_note:
             self.b['add-cover-art.edit_note'] = edit_note.encode('utf8')
         self.b['add-cover-art.mime_type'] = [mime_type]
+        self.b['add-cover-art.id'] = str(cover_art_id)
         self.b.submit()
 
         if image_is_remote:
