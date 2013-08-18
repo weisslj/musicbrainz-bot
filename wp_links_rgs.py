@@ -48,7 +48,7 @@ if no_country_filter:
     in_country_clause = 'FALSE'
 else:
     placeHolders = ','.join( ['%s'] * len(acceptable_countries_for_lang[wp_lang]) )
-    in_country_clause = "%s IN (%s)" % ('c.iso_code', placeHolders)
+    in_country_clause = "%s IN (%s)" % ('iso.code', placeHolders)
     query_params.extend(acceptable_countries_for_lang[wp_lang])
 query_params.append(wp_lang)
 
@@ -65,8 +65,10 @@ WITH
         LEFT JOIN (SELECT acn.artist_credit
             FROM artist_credit_name acn
             JOIN artist a ON acn.artist = a.id
-            LEFT JOIN country c ON a.country = c.id AND """ + in_country_clause + """
-            GROUP BY acn.artist_credit HAVING count(c.iso_code) = 1
+            LEFT JOIN area ON a.area = area.id
+            LEFT JOIN iso_3166_1 iso ON iso.area = area.id
+            WHERE """ + in_country_clause + """
+            GROUP BY acn.artist_credit HAVING count(iso.code) = 1
         ) tc ON rg.artist_credit = tc.artist_credit
         WHERE rg.artist_credit > 2 AND wpl.id IS NULL
             AND (rg.type IS NULL OR rg.type IN (SELECT id FROM release_group_primary_type WHERE name IN ('Album')))
@@ -90,8 +92,7 @@ LIMIT 1000
 query_album_tracks = """
 SELECT DISTINCT t.name
 FROM s_track t
-JOIN tracklist tl ON t.tracklist=tl.id
-JOIN medium m ON tl.id=m.tracklist
+JOIN medium m ON t.medium=m.id
 JOIN release r ON m.release=r.id
 WHERE r.release_group = %s
 """
