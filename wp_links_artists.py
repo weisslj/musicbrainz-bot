@@ -54,31 +54,32 @@ if no_country_filter:
     in_country_clause = 'TRUE'
 else:
     placeHolders = ','.join( ['%s'] * len(acceptable_countries_for_lang[wp_lang]) )
-    in_country_clause = "%s IN (%s)" % ('c.iso_code', placeHolders)
+    in_country_clause = "%s IN (%s)" % ('iso.code', placeHolders)
     query_params.extend(acceptable_countries_for_lang[wp_lang])
 query_params.extend((wp_lang, wp_lang))
 
 query = """
 WITH
     artists_wo_wikipedia AS (
-        SELECT DISTINCT a.id, c.iso_code
+        SELECT DISTINCT a.id, iso.code AS iso_code
         FROM artist a
-        LEFT JOIN country c ON c.id = a.country
+        LEFT JOIN area ON area.id = a.area
+        LEFT JOIN iso_3166_1 iso ON iso.area = area.id
         LEFT JOIN (SELECT l.entity0 AS id
             FROM l_artist_url l
             JOIN url u ON l.entity1 = u.id AND u.url LIKE 'http://"""+wp_lang+""".wikipedia.org/wiki/%%'
             WHERE l.link IN (SELECT id FROM link WHERE link_type = 179)
         ) wpl ON wpl.id = a.id
         WHERE a.id > 2 AND wpl.id IS NULL
-            AND (c.iso_code IS NULL OR """ + in_country_clause + """)
+            AND (iso.code IS NULL OR """ + in_country_clause + """)
     )
-SELECT a.id, a.gid, a.name, ta.iso_code AS country, b.processed
+SELECT a.id, a.gid, a.name, ta.iso_code, b.processed
 FROM artists_wo_wikipedia ta
 JOIN s_artist a ON ta.id=a.id
 LEFT JOIN bot_wp_artist_link b ON a.gid = b.gid AND b.lang = %s
 LEFT JOIN bot_wp_artist_link_ignore i ON a.gid = i.gid AND i.lang = %s
 WHERE i.gid IS NULL
-ORDER BY b.processed NULLS FIRST, country NULLS LAST, a.id
+ORDER BY b.processed NULLS FIRST, ta.iso_code NULLS LAST, a.id
 LIMIT 10000
 """
 
