@@ -1,0 +1,17 @@
+# vim: set syn=python :
+# basic tests for split_artists.py
+
+# Test split regular explression
+>>> # encoding=utf8
+>>> import re
+>>> from split_artists import split_re
+
+>>> re.split(split_re, "Виталий Копылов и Владимир Матусов".decode('utf8'))
+[u'\u0412\u0438\u0442\u0430\u043b\u0438\u0439 \u041a\u043e\u043f\u044b\u043b\u043e\u0432', u' \u0438 ', u'\u0412\u043b\u0430\u0434\u0438\u043c\u0438\u0440 \u041c\u0430\u0442\u0443\u0441\u043e\u0432']
+>>> re.split(split_re, "Roy Eldridge - Benny Carter Quintet".decode('utf8'))
+[u'Roy Eldridge', u' - ', u'Benny Carter Quintet']
+>>> re.split(split_re, "AIDS Wolf vs. Athletic Automaton".decode('utf8'))
+[u'AIDS Wolf', u' vs. ', u'Athletic Automaton']
+>>> re.split(split_re, "Foo, Bar, Baz, & Bugs & Bunny".decode('utf8'))
+[u'Foo', u', ', u'Bar', u', ', u'Baz', u', & ', u'Bugs', u' & ', u'Bunny']
+

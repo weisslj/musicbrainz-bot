@@ -3,3 +3,5 @@ config.py
 
 /wiki-cache
 /acc-cache
+/caa-cache
+*.db
