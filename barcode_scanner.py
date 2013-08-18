@@ -25,6 +25,8 @@ except ImportError:
 
 CAA_SITE = 'https://coverartarchive.org/beta'
 CAA_CACHE = 'caa-cache'
+QUALITY_THRESHOLD = 3
+TRY_SCALES = [1, 0.75, 0.5, 0.2]
 
 if not os.path.exists(CAA_CACHE):
     os.mkdir(CAA_CACHE)
@@ -62,14 +64,37 @@ symtypes = (zbar.Symbol.EAN13,  zbar.Symbol.EAN8, zbar.Symbol.ISBN10,
 
 def scan_barcode(img):
     gray = img.convert('L')
-    w, h = gray.size
+    ow, oh = gray.size  # Original dimensions
+    symbols = {}
 
     scanner = zbar.ImageScanner()
     for type in symtypes:
         scanner.set_config(type, zbar.Config.ENABLE, 1)
-    zimg = zbar.Image(w, h, 'Y800', gray.tostring())
-    scanner.scan(zimg)
-    return zimg.symbols
+
+    # Try scaling the image at different sizes. In high-resolution scans, scan
+    # or print artifacts can confuse the scanner.
+    for scale in TRY_SCALES:
+        w = int(ow * scale)
+        h = int(oh * scale)
+
+        if scale == 1:
+            img = gray
+        else:
+            if max(h, w) < 400:
+                # Resolution too low, give up. (We always try at scale==1)
+                break
+            img = gray.resize((w, h), Image.BICUBIC)
+            assert gray.size != img.size
+
+        zimg = zbar.Image(w, h, 'Y800', img.tostring())
+        scanner.scan(zimg)
+        for sym in zimg.symbols:
+            # For any (type, data) combination keep only the one with the best quality
+            key = (sym.type, sym.data)
+            if key not in symbols or symbols[key]['quality'] < sym.quality:
+                symbols[key] = {'type': sym.type, 'data': sym.data, 'quality': sym.quality, 'scale': scale}
+
+    return symbols.values()
 
 def fetch_image(release, art_id):
     url = '%s/release/%s/%d.jpg' % (CAA_SITE, release.gid, art_id)
@@ -118,6 +143,17 @@ def get_annotation(rel_id):
         return ann[0]
     return None
 
+def qual2name(quality):
+    """Converts quality number to junk/low/medium/high"""
+    if quality < QUALITY_THRESHOLD:
+        return 'junk'
+    elif quality < 50:
+        return 'low'
+    elif quality < 150:
+        return 'medium'
+    else:
+        return 'high'
+
 def handle_release(release):
     # May have multiple cover images with the same barcode
     codes = set()
@@ -143,17 +179,21 @@ def handle_release(release):
         if not symbols:
             txn_ids.append("%s # No barcode" % txn_id)
         for sym in symbols:
-            print "%s: %s: %s" % (txn_id, sym.type, sym.data)
-            txn_ids.append("%s # %s: %s" % (txn_id, sym.type, sym.data))
-            if sym.type in symtypes:
+            txn_my = txn_id + " # %(type)s: %(data)s (confidence %(quality)d) [scale %(scale)s]" % sym
+            print txn_my
+            txn_ids.append(txn_my)
+            if sym['type'] in symtypes and sym['quality'] >= QUALITY_THRESHOLD:
                 # Can't enter this code on the "barcode" field
 
-                if sym.type == zbar.Symbol.CODE39:
-                    misc_codes.add(('Code 39 barcode:', sym.data))
+                if sym['type'] == zbar.Symbol.CODE39:
+                    misc_codes.add(('Code 39 barcode:', sym['data']))
                 else:
-                    codes.add(sym.data)
-                note += ("Recognized %s: %s from %s cover image %s\n" %
-                         (sym.type, sym.data, art_type_map[art_type], url))
+                    codes.add(sym['data'])
+                sym['url'] = url
+                sym['art_type'] = art_type_map[art_type]
+                sym['qualname'] = qual2name(sym['quality'])
+                note += ("Recognized '''%(type)s:''' %(data)s from %(art_type)s cover image %(url)s\n"+
+                         "'''Confidence:''' %(qualname)s %(quality)d [scale %(scale)s]\n") % sym
 
     if not txn_ids:
         # Nothing to do
