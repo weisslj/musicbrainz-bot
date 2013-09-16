@@ -10,8 +10,7 @@ import json
 import config as cfg
 import hashlib
 import base64
-from PIL import Image
-from utils import structureToString, out
+from utils import structureToString
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
