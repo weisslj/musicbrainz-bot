@@ -10,9 +10,18 @@ import json
 import config as cfg
 import hashlib
 import base64
+import imghdr
 from utils import structureToString
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
+
+
+def test_plain_jpeg(h, f):
+    """Without this, imghdr only recognizes images with JFIF/Exif header. http://bugs.python.org/issue16512"""
+    if h.startswith('\xff\xd8'):
+        return 'jpeg'
+
+imghdr.tests.append(test_plain_jpeg)
 
 
 def format_time(secs):
@@ -560,17 +569,13 @@ class MusicBrainzClient(object):
             localFile = image
 
         # Determine mime type
-        f, ext = os.path.splitext(localFile)
-        mime_type = None
-        if re.match(r'\.j(peg|pg|pe|fif|if)$', ext, re.I):
-            mime_type = "image/jpeg"
-        elif re.match(r'\.png$', ext, re.I):
-            mime_type = "image/png"
-        elif re.match(r'\.gif$', ext, re.I):
-            mime_type = "image/gif"
-
-        if not mime_type:
-            raise Exception('Unsupported image type: %s' % ext)
+        fmt = imghdr.what(localFile)
+        if fmt in ("jpeg", "png", "gif"):
+            mime_type = "image/" + fmt
+        elif fmt is None:
+            raise Exception('Cannot recognize image type: %s' % localFile)
+        else:
+            raise Exception('Unsupported image type %s: %s' % (fmt, localFile))
 
         self.b.open(self.url("/release/%s/add-cover-art" % (release_gid,)))
         page = self.b.response().read()
