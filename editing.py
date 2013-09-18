@@ -16,7 +16,7 @@ from mbbot.guesscase import guess_artist_sort_name
 
 
 def format_time(secs):
-    return '%0d:%02d' % (secs / 60, secs % 60)
+    return '%0d:%02d' % (secs // 60, secs % 60)
 
 
 def album_to_form(album):
