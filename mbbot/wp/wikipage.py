@@ -40,12 +40,16 @@ class WikiPage(object):
         self.abstract = self.extract_first_paragraph(text)
 
     def extract_page_categories(self, page):
+        if self.lang not in category_re:
+            return []
         categories = category_re[self.lang].findall(page)
         return categories
 
     def parse_infobox(self, page):
-        match = infobox_re[self.lang].search(page)
         info = {}
+        if self.lang not in infobox_re:
+            return info
+        match = infobox_re[self.lang].search(page)
         if match is None:
             return info
         info['_type'] = match.group(1)
@@ -58,8 +62,10 @@ class WikiPage(object):
 
 
     def parse_persondata(self, page):
-        match = persondata_re[self.lang].search(page)
         info = {}
+        if self.lang not in persondata_re:
+            return info
+        match = persondata_re[self.lang].search(page)
         if match is None:
             return info
         for line in match.group(1).splitlines():
@@ -79,7 +85,7 @@ class WikiPage(object):
 
     @classmethod
     def fetch(cls, url, use_cache=True):
-        m = re.match(r'^http://([a-z]{2})\.wikipedia\.org', url)
+        m = re.match(r'^http://([a-z\-]+)\.wikipedia\.org', url)
         page_lang = m.group(1).encode('utf8')
         page_title = extract_page_title(url, page_lang)
         wp = MediaWiki('http://%s.wikipedia.org/w/api.php' % page_lang)

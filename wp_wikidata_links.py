@@ -19,8 +19,8 @@ import config as cfg
 
 #ENTITY_TYPE = sys.argv[1] if len(sys.argv) > 1 else 'artist'
 
-WIKIPEDIA_RELATIONSHIP_TYPES = {'artist': 179, 'label': 216, 'release-group': 89, 'work': 279}
-WIKIDATA_RELATIONSHIP_TYPES = {'artist': 352, 'label': 354, 'release-group': 353, 'work': 351}
+WIKIPEDIA_RELATIONSHIP_TYPES = {'artist': 179, 'label': 216, 'release-group': 89, 'work': 279, 'area': 355, 'place': 595}
+WIKIDATA_RELATIONSHIP_TYPES = {'artist': 352, 'label': 354, 'release-group': 353, 'work': 351, 'area': 358, 'place': 594}
 
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
@@ -31,7 +31,7 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 """
 CREATE TABLE mbbot.bot_wp_wikidata_links (
     gid uuid NOT NULL,
-    lang character varying(2),
+    lang character varying(10),
     processed timestamp with time zone DEFAULT now(),
     CONSTRAINT bot_wp_wikidata_links_pkey PRIMARY KEY (gid, lang)
 );
@@ -50,7 +50,7 @@ def main(ENTITY_TYPE):
             SELECT DISTINCT e.id AS entity_id, e.gid AS entity_gid, u.url AS wp_url
             FROM """+entity_type_table+""" e
                 JOIN """+url_relationship_table+""" l ON l."""+main_entity_entity_point+""" = e.id AND l.link IN (SELECT id FROM link WHERE link_type = """+str(WIKIPEDIA_RELATIONSHIP_TYPES[ENTITY_TYPE])+""")
-                JOIN url u ON u.id = l."""+url_entity_point+""" AND u.url LIKE 'http://%%.wikipedia.org/wiki/%%' AND substring(u.url from 8 for 2) IN ('en', 'fr')
+                JOIN url u ON u.id = l."""+url_entity_point+""" AND u.url LIKE 'http://%%.wikipedia.org/wiki/%%' AND substring(u.url from 8 for 2) IN ('en', 'fr', 'de', 'it', 'es')
             WHERE 
                 /* No existing WikiData relationship for this entity */
                 NOT EXISTS (SELECT 1 FROM """+url_relationship_table+""" ol WHERE ol."""+main_entity_entity_point+""" = e.id AND ol.link IN (SELECT id FROM link WHERE link_type = """+str(WIKIDATA_RELATIONSHIP_TYPES[ENTITY_TYPE])+"""))
@@ -60,7 +60,7 @@ def main(ENTITY_TYPE):
         )
     SELECT e.id, e.gid, e.name, ewf.wp_url, b.processed
     FROM entities_wo_wikidata ewf
-    JOIN s_"""+entity_type_table+""" e ON ewf.entity_id = e.id
+    JOIN """+entity_type_table+""" e ON ewf.entity_id = e.id
     LEFT JOIN bot_wp_wikidata_links b ON e.gid = b.gid AND b.lang = substring(ewf.wp_url from 8 for 2)
     ORDER BY b.processed NULLS FIRST, e.id
     LIMIT 250
@@ -80,7 +80,7 @@ def main(ENTITY_TYPE):
             wikidata_url = 'http://www.wikidata.org/wiki/%s' % page.wikidata_id.upper()
             edit_note = 'From %s' % (entity['wp_url'],)
             colored_out(bcolors.OKGREEN, ' * found WikiData identifier:', wikidata_url)
-            time.sleep(3)
+            time.sleep(1)
             out(' * edit note:', edit_note.replace('\n', ' '))
             mb.add_url(ENTITY_TYPE.replace('-', '_'), entity['gid'], str(WIKIDATA_RELATIONSHIP_TYPES[ENTITY_TYPE]), wikidata_url, edit_note, True)
             matched.add(entity['gid'])
@@ -93,7 +93,7 @@ def main(ENTITY_TYPE):
 
 if __name__ == '__main__':
     with PIDFile('/tmp/mbbot_wp_wikidata_links.pid'):
-        ENTITY_TYPES = ('artist', 'release-group', 'work', 'label')
+        ENTITY_TYPES = ('area', 'place', 'artist', 'release-group', 'work', 'label')
         if len(sys.argv) > 1 and sys.argv[1] in ENTITY_TYPES:
             main(sys.argv[1])
         else:
