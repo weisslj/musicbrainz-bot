@@ -15,7 +15,7 @@ monkeypatch_mechanize()
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
-FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium|booklet|tray)(?:-\d+)?\.(?:jpeg|jpg|png|gif)', re.I)
+FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium|booklet|tray|sticker)(?:-\d+)?\.(?:jpeg|jpg|png|gif)', re.I)
 
 class CoverArtArchiveReleaseInfo(object):
 	def __init__(self, release_id):
