@@ -51,7 +51,7 @@ SELECT DISTINCT
     a.end_date_day,
     u.url,
     b.processed
-FROM s_artist a
+FROM artist a
 JOIN l_artist_url l ON l.entity0 = a.id AND l.link IN (SELECT id FROM link WHERE link_type = 179)
 JOIN url u ON u.id = l.entity1
 LEFT JOIN bot_wp_artist_data b ON a.gid = b.gid

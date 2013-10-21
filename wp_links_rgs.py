@@ -79,8 +79,8 @@ WITH
     )
 SELECT rg.id, rg.gid, rg.name, ac.name, string_agg(rgtn.name, ',') AS rg_secondary_types, b.processed
 FROM rgs_wo_wikipedia ta
-JOIN s_release_group rg ON ta.id=rg.id
-JOIN s_artist_credit ac ON rg.artist_credit=ac.id
+JOIN release_group rg ON ta.id=rg.id
+JOIN artist_credit ac ON rg.artist_credit=ac.id
 LEFT JOIN bot_wp_rg_link b ON rg.gid = b.gid AND b.lang = %s
 LEFT JOIN release_group_secondary_type_join rgst ON rg.id = rgst.release_group
 LEFT JOIN release_group_secondary_type rgtn ON rgst.secondary_type = rgtn.id
@@ -91,7 +91,7 @@ LIMIT 1000
 
 query_album_tracks = """
 SELECT DISTINCT t.name
-FROM s_track t
+FROM track t
 JOIN medium m ON t.medium=m.id
 JOIN release r ON m.release=r.id
 WHERE r.release_group = %s

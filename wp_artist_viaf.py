@@ -50,11 +50,10 @@ WITH
             /* WP link should only be linked to this artist */
             AND NOT EXISTS (SELECT 1 FROM l_artist_url WHERE l_artist_url.entity1 = u.id AND l_artist_url.entity0 <> a.id)
             AND l.edits_pending = 0
-            AND a.gid NOT IN ('89ad4ac3-39f7-470e-963a-56509c546377')
     )
 SELECT a.id, a.gid, a.name, awf.wp_url, b.processed
 FROM artists_wo_viaf awf
-JOIN s_artist a ON awf.artist_id = a.id
+JOIN artist a ON awf.artist_id = a.id
 LEFT JOIN bot_wp_artist_viaf b ON a.gid = b.gid AND b.lang = substring(awf.wp_url from 8 for 2)
 ORDER BY b.processed NULLS FIRST, a.id
 LIMIT 1000

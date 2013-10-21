@@ -75,7 +75,7 @@ WITH
     )
 SELECT a.id, a.gid, a.name, ta.iso_code, b.processed
 FROM artists_wo_wikipedia ta
-JOIN s_artist a ON ta.id=a.id
+JOIN artist a ON ta.id=a.id
 LEFT JOIN bot_wp_artist_link b ON a.gid = b.gid AND b.lang = %s
 LEFT JOIN bot_wp_artist_link_ignore i ON a.gid = i.gid AND i.lang = %s
 WHERE i.gid IS NULL
@@ -85,19 +85,19 @@ LIMIT 10000
 
 query_artist_albums = """
 SELECT rg.name
-FROM s_release_group rg
+FROM release_group rg
 JOIN artist_credit_name acn ON rg.artist_credit = acn.artist_credit
 WHERE acn.artist = %s
 UNION
 SELECT r.name
-FROM s_release r
+FROM release r
 JOIN artist_credit_name acn ON r.artist_credit = acn.artist_credit
 WHERE acn.artist = %s
 """
 
 query_artist_works = """
 SELECT DISTINCT w.name
-FROM s_work w
+FROM work w
 WHERE w.id IN (
     -- Select works that are related to recordings for this artist
     SELECT entity1 AS work
@@ -126,7 +126,7 @@ WHERE l.entity0 = %s AND
 
 query_related_artists = """
 SELECT DISTINCT a.name
-FROM s_artist a
+FROM artist a
 WHERE a.id IN (
     -- Select artists that this artist is directly related to
     SELECT CASE WHEN entity1 = %s THEN entity0 ELSE entity1 END AS artist
