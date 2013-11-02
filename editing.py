@@ -435,8 +435,8 @@ class MusicBrainzClient(object):
                 self.b["mediums.%s.format_id" % medium_no] = medium['format_id']
 
             if 'tracklist' in medium:
-                tracklist_id = self.b["mediums.%s.tracklist_id" % medium_no]
-                request = urllib2.Request('http://musicbrainz.org/ws/js/tracklist/%s' % tracklist_id, headers={"Accept" : "application/json"})
+                tracklist_id = self.b["mediums.%s.id" % medium_no]
+                request = urllib2.Request('http://musicbrainz.org/ws/js/medium/%s' % tracklist_id, headers={"Accept" : "application/json"})
                 data = urllib2.urlopen(request)
                 old_tracklist = json.load(data)
 
