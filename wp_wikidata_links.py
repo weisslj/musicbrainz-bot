@@ -63,7 +63,7 @@ def main(ENTITY_TYPE):
     JOIN """+entity_type_table+""" e ON ewf.entity_id = e.id
     LEFT JOIN bot_wp_wikidata_links b ON e.gid = b.gid AND b.lang = substring(ewf.wp_url from 8 for 2)
     ORDER BY b.processed NULLS FIRST, e.id
-    LIMIT 250
+    LIMIT 500
     """
 
     seen = set()
@@ -90,12 +90,18 @@ def main(ENTITY_TYPE):
         else:
             db.execute("UPDATE bot_wp_wikidata_links SET processed = now() WHERE (gid, lang) = (%s, %s)", (entity['gid'], page.lang))
         seen.add(entity['gid'])
+    stats['seen'][ENTITY_TYPE] = len(seen)
+    stats['matched'][ENTITY_TYPE] = len(matched)
 
+stats = {'seen': {}, 'matched': {}}
 if __name__ == '__main__':
     with PIDFile('/tmp/mbbot_wp_wikidata_links.pid'):
-        ENTITY_TYPES = ('area', 'place', 'artist', 'release-group', 'work', 'label')
+        ENTITY_TYPES = ('place', 'release-group', 'artist', 'work', 'label')
         if len(sys.argv) > 1 and sys.argv[1] in ENTITY_TYPES:
             main(sys.argv[1])
         else:
             for entity_type in ENTITY_TYPES:
                 main(entity_type)
+	print '\nStats:'
+        for entity_type in ENTITY_TYPES:
+            print ' * %s : %s / %s' % (entity_type, stats['matched'][entity_type], stats['seen'][entity_type])
