@@ -315,9 +315,6 @@ class MusicBrainzClient(object):
                 print " * comment already set, not changing"
                 return
             self.b["edit-work.comment"] = work['comment'].encode('utf-8')
-        for idx, iswc in enumerate(work['iswcs']):
-            self.b.new_control('text', 'edit-work.iswcs.%s'%idx, {'value': str(iswc)})
-        self.b.fixup()
         self.b["edit-work.edit_note"] = edit_note.encode('utf8')
         try: self.b["edit-work.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass

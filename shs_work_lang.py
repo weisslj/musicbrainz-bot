@@ -45,7 +45,7 @@ WITH
     )
 SELECT w.id, w.gid, w.name, w.language, wwol.shs_url, b.processed
 FROM works_wo_lang wwol
-JOIN s_work w ON wwol.work_id = w.id
+JOIN work w ON wwol.work_id = w.id
 LEFT JOIN bot_shs_work_lang b ON w.gid = b.work
 ORDER BY b.processed NULLS FIRST, w.id
 LIMIT 500
