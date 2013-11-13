@@ -163,11 +163,14 @@ def get_page_content(wp, title, wp_lang, use_cache=True):
     return content
 
 
-def extract_page_title(url, wp_lang):
+def extract_page_title(url, wp_lang, normalize=False):
     prefix = 'http://%s.wikipedia.org/wiki/' % wp_lang
     if not url.startswith(prefix):
         return None
-    return urllib.unquote(url[len(prefix):].encode('utf8')).decode('utf8')
+    title = urllib.unquote(url[len(prefix):].encode('utf8')).decode('utf8')
+    if normalize:
+        title = title.replace('_', ' ')
+    return title
 
 def wp_is_canonical_page(title, page_orig):
     page = mangle_name(page_orig)
