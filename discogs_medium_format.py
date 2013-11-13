@@ -41,13 +41,12 @@ WITH
             /* this release should not have another discogs link attached */
             AND NOT EXISTS (SELECT 1 FROM l_release_url WHERE l_release_url.entity0 = r.id AND l_release_url.entity1 <> u.id
                                     AND l_release_url.link IN (SELECT id FROM link WHERE link_type = 76))
-            AND r.gid NOT IN ('3991da9c-fc25-45f5-a671-0953b22a63c7')
             AND l.edits_pending = 0
     )
 SELECT ra.release_id, r.gid, ra.medium_id, r.name, ra.discogs_url, ra.position, ra.format, ac.name AS ac_name, b.processed
 FROM mediums_with_fuzzy_format ra
-JOIN s_release r ON ra.release_id = r.id
-JOIN s_artist_credit ac ON r.artist_credit=ac.id
+JOIN release r ON ra.release_id = r.id
+JOIN artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_medium_format b ON ra.medium_id = b.medium
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.id, ra.position
 LIMIT 1000

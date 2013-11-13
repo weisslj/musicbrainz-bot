@@ -46,6 +46,11 @@ date_categories_re['person']['begin']['fr'] = re.compile(r'Naissance en (\d{4})'
 date_categories_re['person']['end']['fr'] = re.compile(r'D\xe9c\xe8s en (\d{4})', re.I)
 date_categories_re['group']['begin']['fr'] = re.compile(r'Groupe de musique form\xe9 en (\d{4})', re.I)
 
+authority_control_re = {}
+authority_control_re['en'] = re.compile(r'\{\{Authority control[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}', re.DOTALL)
+authority_control_re['fr'] = re.compile(r'\{\{Autorit\xe9[^|]*((?:[^{}].*?|\{\{.*?\}\})*)\}\}', re.DOTALL)
+
+
 locales = {
     'fr': 'fr_FR.UTF-8',
     'en': 'en_US.UTF-8'
@@ -368,3 +373,26 @@ def determine_date_from_infobox(page, date_type):
                 date['month'] = None
         return date, ['Infobox has %s.' % info]
     return date, []
+
+##################################### Authority identifiers ###########################################
+
+def determine_authority_identifiers(page):
+    identifiers = {}
+    if page.lang not in authority_control_re:
+        return identifiers
+    match = authority_control_re[page.lang].search(page.text)
+    if match is None:
+        return identifiers
+    for identifier in match.group(1).split('|'):
+        if '=' not in identifier:
+            continue
+        name, value = tuple(s.strip() for s in identifier.split('=', 1))
+        # if there's already a value for this identifier type, put all values in an set
+        if name in identifiers:
+            if not isinstance(identifiers[name], basestring):
+                identifiers[name].add(value)
+            else:
+                identifiers[name] = set([identifiers[name], value])
+        else:
+            identifiers[name] = value
+    return identifiers

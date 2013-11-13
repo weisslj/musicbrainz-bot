@@ -50,6 +50,7 @@ JOIN track_name tn ON t.name = tn.id
 WHERE r.id = %s
 '''
 
+utils.parse_scripts()
 script_range_to_iso_code = sorted((range, iso15924.unicode_alias_to_iso_code[script]) for script, ranges in utils.script_ranges.items() for range in ranges)
 def get_scripts(text):
     d = defaultdict(int)

@@ -14,9 +14,8 @@ db.execute("SET search_path TO musicbrainz, %s" % cfg.BOT_SCHEMA_DB)
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 query = """
-    SELECT DISTINCT r.id, r.gid, rn.name, r.comment, lrw.id AS rel_id, lt.id AS link_type, r.artist_credit
+    SELECT DISTINCT r.id, r.gid, r.name, r.comment, lrw.id AS rel_id, lt.id AS link_type, r.artist_credit
     FROM recording r
-        JOIN track_name rn ON rn.id = r.name
         JOIN l_recording_work lrw ON lrw.entity0 = r.id
         JOIN link l ON l.id = lrw.link
         JOIN link_type lt ON l.link_type = lt.id

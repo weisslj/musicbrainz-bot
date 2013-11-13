@@ -1,4 +1,9 @@
 *.pyc
 config.py
+*latest-all-titles-in-ns0
 
+/solr
 /wiki-cache
+/acc-cache
+/caa-cache
+*.db

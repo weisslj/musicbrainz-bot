@@ -42,13 +42,11 @@ WITH
             AND l.edits_pending = 0
             AND r.edits_pending = 0
     )
-SELECT r.id, r.gid, r.name, ra.discogs_url, ac.name AS ac_name, b.processed, SUM(track_count) AS track_count
+SELECT r.id, r.gid, r.name, ra.discogs_url, ac.name AS ac_name, b.processed, SUM(m.track_count) AS track_count
 FROM vinyl_releases ra
-JOIN s_release r ON ra.id = r.id
-JOIN release_meta rm ON rm.id = ra.id
-JOIN s_artist_credit ac ON r.artist_credit=ac.id
-JOIN medium m ON m.release = r.id
-JOIN tracklist tl ON tl.id = m.tracklist
+JOIN release r ON ra.id = r.id
+JOIN medium m ON r.id = m.release
+JOIN artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_track_number b ON r.gid = b.gid
 GROUP BY r.artist_credit, r.id, r.gid, r.name, ra.discogs_url, ac.name, b.processed
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.id
@@ -57,9 +55,8 @@ LIMIT 1000
 
 query_release_tracks = """
 SELECT t.position, t.number, t.name, t.length, m.position AS medium_position
-FROM s_track t
-    JOIN tracklist tl ON t.tracklist = tl.id
-    JOIN medium m ON tl.id = m.tracklist
+FROM track t
+    JOIN medium m ON t.medium = m.id
 WHERE m.release = %s
 ORDER by m.position, t.position
 """
@@ -77,7 +74,7 @@ def discogs_get_tracklist(release_url):
     if m:
         release_id = int(m.group(1))
         release = discogs.Release(release_id)
-        return release.data['tracklist']
+        return [track for track in release.data['tracklist'] if track['position'] != '']
     return None
 
 for release in db.execute(query):

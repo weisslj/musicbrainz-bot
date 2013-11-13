@@ -7,12 +7,15 @@ import time
 import urllib2
 import json
 from editing import MusicBrainzClient
-from utils import out, colored_out, bcolors
+from utils import out, colored_out, bcolors, monkeypatch_mechanize
 import config as cfg
+
+# Work around mechanize bug. See: https://github.com/jjlee/mechanize/pull/58
+monkeypatch_mechanize()
 
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
-FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium|booklet|tray)(?:-\d+)?\.(?:jpeg|jpg|png|gif)', re.I)
+FILE_RE = re.compile(r'^(?P<mbid>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})-(?P<type>front|back|medium|booklet|tray|sticker)(?:-\d+)?\.(?:jpeg|jpg|png|gif)', re.I)
 
 class CoverArtArchiveReleaseInfo(object):
 	def __init__(self, release_id):
@@ -60,4 +63,4 @@ for file in sys.argv[1:]:
 
 	colored_out(bcolors.OKGREEN, " * Adding %s cover art to http://musicbrainz.org/release/%s" % (type, mbid))
 	time.sleep(10)
-	mb.add_cover_art(mbid, file, [type], None, '', '', False, True)
+	mb.add_cover_art(mbid, file, [type], None, '', '', False)
