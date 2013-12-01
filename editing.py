@@ -91,7 +91,7 @@ class MusicBrainzClient(object):
         self.b["password"] = password
         self.b.submit()
         resp = self.b.response()
-        if resp.geturl() != self.url("/user/" + username):
+        if resp.geturl() != re.sub(r'^https?', 'https', self.url("/user/" + username)):
             raise Exception('unable to login')
 
     # return tuple (normal_edits_left, edits_left)
