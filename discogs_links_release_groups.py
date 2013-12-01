@@ -44,9 +44,8 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=
 discogs.user_agent = 'MusicBrainzDiscogsReleaseGroupsBot/0.1 +https://github.com/weisslj/musicbrainz-bot'
 
 query_rg_without_master = '''
-SELECT rg.id, rg.gid, release_name.name
+SELECT rg.id, rg.gid, name
 FROM release_group rg
-JOIN release_name ON rg.name = release_name.id
 WHERE rg.id IN (
     SELECT DISTINCT rg.id
     FROM release_group rg
@@ -73,7 +72,6 @@ FROM l_release_url l_ru
 JOIN link l ON l_ru.link = l.id
 JOIN release ON release.id = l_ru.entity0
 JOIN release_group rg ON rg.id = release.release_group
-JOIN release_name ON release.name = release_name.id
 JOIN url ON url.id = l_ru.entity1
 WHERE release.release_group = %s AND l.link_type = 76
 '''

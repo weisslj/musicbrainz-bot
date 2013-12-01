@@ -15,29 +15,29 @@ def wiki_markup(bot_blacklist, entity, db):
 
 def entity_col(gid, entity, db):
     if entity == 'artist':
-        return generic_entity_col(gid, db, 'Artist', 'artist', 'artist_name')
+        return generic_entity_col(gid, db, 'Artist', 'artist')
     elif entity == 'label':
-        return generic_entity_col(gid, db, 'Label', 'label', 'label_name')
+        return generic_entity_col(gid, db, 'Label', 'label')
     elif entity == 'release':
-        return with_artist_entity_col(gid, db, 'Release', 'release', 'release_name')
+        return with_artist_entity_col(gid, db, 'Release', 'release')
     elif entity == 'release-group':
-        return with_artist_entity_col(gid, db, 'ReleaseGroup', 'release_group', 'release_name')
+        return with_artist_entity_col(gid, db, 'ReleaseGroup', 'release_group')
     elif entity == 'recording':
-        return with_artist_entity_col(gid, db, 'Recording', 'recording', 'track_name')
+        return with_artist_entity_col(gid, db, 'Recording', 'recording')
     elif entity == 'work':
-        return generic_entity_col(gid, db, 'Work', 'work', 'work_name')
+        return generic_entity_col(gid, db, 'Work', 'work')
     else:
         return None
 
-def generic_entity_col(gid, db, template, table, name_table):
-    name, comment = entity_name(gid, db, table, name_table)
+def generic_entity_col(gid, db, template, table):
+    name, comment = entity_name(gid, db, table)
     col = u'[[%s:%s|%s]]' % (template, gid, name)
     if comment:
         col += u' (%s)' % comment
     return col
 
-def with_artist_entity_col(gid, db, template, table, name_table):
-    name, comment, ac = entity_name_ac(gid, db, table, name_table)
+def with_artist_entity_col(gid, db, template, table):
+    name, comment, ac = entity_name_ac(gid, db, table)
     ac_name = artist_credit(ac, db)
     col = u'[[%s:%s|%s]]' % (template, gid, u'%s – %s' % (ac_name, name))
     if comment:
@@ -45,18 +45,18 @@ def with_artist_entity_col(gid, db, template, table, name_table):
     return col
 
 def artist_credit(ac, db):
-    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT acn.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id WHERE ac.id = %s ORDER BY position''', ac))
 
-def entity_name(gid, db, table, name_table):
-    query = 'SELECT en.name, e.comment FROM '+table+' e JOIN '+name_table+' en ON e.name = en.id WHERE e.gid = %s'''
+def entity_name(gid, db, table):
+    query = 'SELECT e.name, e.comment FROM '+table+' e WHERE e.gid = %s'''
     row = db.execute(query, gid).fetchone()
     if row is None:
         raise Exception('no entity with gid %s found in %s' % (gid, table))
     else:
         return row
 
-def entity_name_ac(gid, db, table, name_table):
-    query = 'SELECT en.name, e.comment, e.artist_credit FROM '+table+' e JOIN '+name_table+' en ON e.name = en.id WHERE e.gid = %s'''
+def entity_name_ac(gid, db, table):
+    query = 'SELECT e.name, e.comment, e.artist_credit FROM '+table+' e WHERE e.gid = %s'''
     row = db.execute(query, gid).fetchone()
     if row is None:
         raise Exception('no entity with gid %s found in %s' % (gid, table))

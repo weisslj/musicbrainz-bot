@@ -75,7 +75,7 @@ for loc, country_list in store_map:
 amazon_api = {}
 
 query_releases_with_duplicate_asin = '''
-SELECT q.url, lru.id, r.id, r.gid, r.barcode, rn.name, r.artist_credit
+SELECT q.url, lru.id, r.id, r.gid, r.barcode, r.name, r.artist_credit
 FROM
     (
         SELECT
@@ -90,11 +90,9 @@ FROM
     JOIN l_release_url lru ON lru.entity1 = q.id
     JOIN release r ON r.id = lru.entity0
     JOIN release_status AS rs ON r.status = rs.id
-    JOIN release_name rn ON rn.id = r.name
     JOIN artist_credit ac ON r.artist_credit = ac.id
-    JOIN artist_name an ON ac.name = an.id
 WHERE r.edits_pending = 0 AND lru.edits_pending = 0 AND rs.name != 'Pseudo-Release' AND r.barcode IS NOT NULL AND r.barcode != ''
-GROUP BY q.url, lru.id, r.id, r.gid, r.barcode, rn.name, r.artist_credit
+GROUP BY q.url, lru.id, r.id, r.gid, r.barcode, r.name, r.artist_credit
 ORDER BY r.artist_credit
 '''
 
@@ -194,7 +192,7 @@ def release_format(r):
     return u', '.join(text)
 
 def artist_credit(ac):
-    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT acn.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id WHERE ac.id = %s ORDER BY position''', ac))
 
 def format_release(release):
     rel_id, r, gid, barcode, name, ac = release

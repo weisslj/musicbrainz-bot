@@ -26,10 +26,9 @@ db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 query_releases_with_unknown_script = '''
-SELECT DISTINCT r.artist_credit, r.id, r.gid, rn.name, r.script
+SELECT DISTINCT r.artist_credit, r.id, r.gid, r.name, r.script
 FROM release r
 JOIN medium m ON m.release = r.id
-JOIN release_name rn ON rn.id = r.name
 WHERE r.script IS NULL AND r.edits_pending = 0 AND m.edits_pending = 0
 ORDER BY r.artist_credit
 '''
@@ -42,11 +41,10 @@ WHERE r.id = %s
 '''
 
 query_track_names = '''
-SELECT DISTINCT tn.name
+SELECT DISTINCT t.name
 FROM release r
 JOIN medium m ON m.release = r.id
 JOIN track t ON t.medium = m.id
-JOIN track_name tn ON t.name = tn.id
 WHERE r.id = %s
 '''
 

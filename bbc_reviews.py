@@ -71,28 +71,25 @@ def are_similar(name1, name2):
 
 def get_release_redirects(db):
     query_release_redirects = '''
-        SELECT redirect.gid, r.release_group, r.artist_credit, rn.name
+        SELECT redirect.gid, r.release_group, r.artist_credit, r.name
         FROM release_gid_redirect redirect
         JOIN release r ON r.id = redirect.new_id
-        JOIN release_name rn ON r.name = rn.id
     '''
     for gid, rg, ac, name in db.execute(query_release_redirects):
         yield (gid, (rg, ac, name))
 
 def get_release_groups(db):
     query_rgs = '''
-        SELECT rg.id, rg.gid, rn.name
+        SELECT rg.id, rg.gid, rg.name
         FROM release_group rg
-        JOIN release_name rn ON rg.name = rn.id
     '''
     for rg, gid, name in db.execute(query_rgs):
         yield (rg, (gid, name))
 
 def get_releases(db):
     query_releases = '''
-        SELECT r.gid, r.release_group, r.artist_credit, rn.name
+        SELECT r.gid, r.release_group, r.artist_credit, r.name
         FROM release r
-        JOIN release_name rn ON r.name = rn.id
     '''
     for gid, rg, ac, name in db.execute(query_releases):
         yield (gid, (rg, ac, name))
@@ -109,7 +106,7 @@ def get_review_urls(db):
         yield (rg, url)
 
 def artist_credit(db, ac):
-    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT acn.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id WHERE ac.id = %s ORDER BY position''', ac))
 
 def db_connect():
     engine = sqlalchemy.create_engine(cfg.MB_DB)

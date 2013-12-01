@@ -41,14 +41,13 @@ db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
 mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
 
 query_releases_with_cc = '''
-SELECT r.id, r.gid, r.artist_credit, release_name.name, url.url, l_ru.id
+SELECT r.id, r.gid, r.artist_credit, r.name, url.url, l_ru.id
 FROM release r
-JOIN release_name ON r.name = release_name.id
 JOIN l_release_url l_ru ON r.id = l_ru.entity0
 JOIN link l ON l_ru.link = l.id
 JOIN url ON url.id = l_ru.entity1
 WHERE l.link_type = 84 AND l_ru.edits_pending = 0
-GROUP BY r.id, r.gid, r.artist_credit, release_name.name, url.url, l_ru.id
+GROUP BY r.id, r.gid, r.artist_credit, r.name, url.url, l_ru.id
 ORDER BY r.artist_credit
 '''
 

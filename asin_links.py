@@ -80,11 +80,9 @@ for loc, country_list in store_map:
 amazon_api = {}
 
 query_releases_without_asin = '''
-SELECT r.id, r.gid, r.barcode, release_name.name, r.artist_credit
+SELECT r.id, r.gid, r.barcode, r.name, r.artist_credit
 FROM release r
-JOIN release_name ON r.name = release_name.id
 JOIN artist_credit ac ON r.artist_credit = ac.id
-JOIN artist_name an ON ac.name = an.id
 JOIN artist_credit_name AS acn ON acn.artist_credit = r.artist_credit
 JOIN artist AS artist ON artist.id = acn.artist
 JOIN release_status AS rs ON r.status = rs.id
@@ -107,7 +105,7 @@ WHERE r.edits_pending = 0 AND rs.name != 'Pseudo-Release' AND (r.comment IS NULL
     GROUP BY r.barcode
     HAVING COUNT(r.barcode) = 1
 )
-GROUP BY r.id, r.gid, r.barcode, release_name.name, r.artist_credit
+GROUP BY r.id, r.gid, r.barcode, r.name, r.artist_credit
 ORDER BY r.artist_credit
 '''
 
@@ -224,7 +222,7 @@ def date_format(year, month, day):
     return u'%04d' % year
 
 def release_labels(r):
-    return [name for name, in db.execute('''SELECT ln.name FROM release_label rl JOIN label l ON rl.label = l.id JOIN label_name ln ON l.name = ln.id WHERE rl.release = %s''', r)]
+    return [name for name, in db.execute('''SELECT l.name FROM release_label rl JOIN label l ON rl.label = l.id WHERE rl.release = %s''', r)]
 
 def release_catnrs(r):
     return [cat for cat, in db.execute('''SELECT catalog_number FROM release_label WHERE release = %s''', r) if cat]

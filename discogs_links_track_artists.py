@@ -41,11 +41,10 @@ mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE, editor_id=
 discogs.user_agent = 'MusicBrainzDiscogsReleaseGroupsBot/0.1 +https://github.com/weisslj/musicbrainz-bot'
 
 query_missing = '''
-SELECT r.id, r.gid, tn.name, t.position, m.position, url.url, a.id, a.gid, ac.id
+SELECT r.id, r.gid, t.name, t.position, m.position, url.url, a.id, a.gid, ac.id
 FROM release r
 JOIN medium m ON m.release = r.id
 JOIN track t ON t.medium = m.id
-JOIN track_name tn ON tn.id = t.name
 JOIN artist_credit ac ON ac.id = t.artist_credit
 JOIN artist_credit_name acn ON acn.artist_credit = ac.id
 JOIN artist a ON acn.artist = a.id
@@ -126,7 +125,7 @@ def combine_names(names):
         return u'“'+names[0]+u'”'
 
 def artist_credit(ac):
-    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT an.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id JOIN artist_name an ON acn.name = an.id WHERE ac.id = %s ORDER BY position''', ac))
+    return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT acn.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id WHERE ac.id = %s ORDER BY position''', ac))
 
 def discogs_artist_url(name):
     return u'http://www.discogs.com/artist/%s' % musicbrainz_quote(discogs_quote(name))
