@@ -47,10 +47,10 @@ def main(ENTITY_TYPE):
     query = """
     WITH
         entities_wo_wikidata AS (
-            SELECT DISTINCT e.id AS entity_id, e.gid AS entity_gid, u.url AS wp_url
+            SELECT DISTINCT e.id AS entity_id, e.gid AS entity_gid, u.url AS wp_url, substring(u.url from '//(([a-z]|-)+)\\.') as wp_lang
             FROM """+entity_type_table+""" e
                 JOIN """+url_relationship_table+""" l ON l."""+main_entity_entity_point+""" = e.id AND l.link IN (SELECT id FROM link WHERE link_type = """+str(WIKIPEDIA_RELATIONSHIP_TYPES[ENTITY_TYPE])+""")
-                JOIN url u ON u.id = l."""+url_entity_point+""" AND u.url LIKE 'http://%%.wikipedia.org/wiki/%%' AND substring(u.url from 8 for 2) IN ('en', 'fr', 'de', 'it', 'es')
+                JOIN url u ON u.id = l."""+url_entity_point+""" AND u.url LIKE 'http://%%.wikipedia.org/wiki/%%'
             WHERE 
                 /* No existing WikiData relationship for this entity */
                 NOT EXISTS (SELECT 1 FROM """+url_relationship_table+""" ol WHERE ol."""+main_entity_entity_point+""" = e.id AND ol.link IN (SELECT id FROM link WHERE link_type = """+str(WIKIDATA_RELATIONSHIP_TYPES[ENTITY_TYPE])+"""))
@@ -61,7 +61,7 @@ def main(ENTITY_TYPE):
     SELECT e.id, e.gid, e.name, ewf.wp_url, b.processed
     FROM entities_wo_wikidata ewf
     JOIN """+entity_type_table+""" e ON ewf.entity_id = e.id
-    LEFT JOIN bot_wp_wikidata_links b ON e.gid = b.gid AND b.lang = substring(ewf.wp_url from 8 for 2)
+    LEFT JOIN bot_wp_wikidata_links b ON e.gid = b.gid AND b.lang = ewf.wp_lang
     ORDER BY b.processed NULLS FIRST, e.id
     LIMIT 500
     """
