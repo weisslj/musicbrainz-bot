@@ -99,7 +99,7 @@ class MusicBrainzClient(object):
         if self.editor_id is None:
             print 'error, pass editor_id to constructor for edits_left()'
             return 0, 0
-        re_found_edits = re.compile(r'Found (?:at least )?([0-9]+(?:,[0-9]+)?) edits')
+        re_found_edits = re.compile(r'Found (?:at least )?([0-9]+(?:,[0-9]+)?) edits?')
         today = datetime.utcnow().strftime('%Y-%m-%d')
         kwargs = {
                 'page': '2000',
