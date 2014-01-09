@@ -84,40 +84,6 @@ def are_artists_similar(name1, name2):
     ratio = Levenshtein.jaro_winkler(name1, name2, 0.0) # no common prefix length
     return ratio >= 0.8
 
-MB_ENC_ALWAYS = '"<>\\^`{|} '
-MB_UNENCODE = "!'()*~"
-MB_ENC_NEVER  = '#$%&+,/:;=?@[]'
-
-_hexdig = '0123456789ABCDEFabcdef'
-_hextochr = dict((a + b, chr(int(a + b, 16)))
-                 for a in _hexdig for b in _hexdig)
-
-def unquote(s, safe=''):
-    """unquote('abc%20def') -> 'abc def'."""
-    res = s.split('%')
-    # fastpath
-    if len(res) == 1:
-        return s
-    s = res[0]
-    for item in res[1:]:
-        try:
-            c = _hextochr[item[:2]]
-            if c not in safe:
-                s += c + item[2:]
-            else:
-                s += '%' + item
-        except KeyError:
-            s += '%' + item
-        except UnicodeDecodeError:
-            s += unichr(int(item[:2], 16)) + item[2:]
-    return s
-
-def musicbrainz_quote(s):
-    return unicode(urllib.quote(unquote(s.encode('utf-8'), MB_ENC_NEVER), MB_UNENCODE+MB_ENC_NEVER), 'utf-8')
-
-def discogs_quote(name):
-    return unicode(urllib.quote_plus(name.encode('utf-8')), 'utf-8')
-
 def combine_names(names):
     if len(names) > 1:
         return u' and '.join([', '.join([u'“'+n+u'”' for n in names[:-1]]), u'“'+names[-1]+u'”'])
@@ -127,13 +93,14 @@ def combine_names(names):
 def artist_credit(ac):
     return u''.join(u'%s%s' % (name, join_phrase if join_phrase else u'') for name, join_phrase in db.execute('''SELECT acn.name,acn.join_phrase from artist_credit ac JOIN artist_credit_name acn ON acn.artist_credit = ac.id WHERE ac.id = %s ORDER BY position''', ac))
 
-def discogs_artist_url(name):
-    return u'http://www.discogs.com/artist/%s' % musicbrainz_quote(discogs_quote(name))
+def discogs_artist_url(discogs_artist):
+    return u'http://www.discogs.com/artist/%d' % discogs_artist.data['id']
 
 bot_blacklist = blacklist.discogs_links('artist')
 bot_blacklist_new = set()
 discogs_artist_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_discogs_artist_set'''))
 discogs_artist_set |= bot_blacklist
+discogs_artist_set = set(gid for gid, url in discogs_artist_set)
 discogs_artist_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_discogs_artist_problematic'''))
 
 def main(verbose=False):
@@ -222,8 +189,8 @@ def main(verbose=False):
                 out(u'not similar: %s [%s] <-> %s' % (norm_name, discogs_artist.name, ac_name))
             db.execute("INSERT INTO bot_discogs_artist_problematic (gid) VALUES (%s)", a_gid)
             continue
-        discogs_url = discogs_artist_url(discogs_artist.name)
-        if (a_gid, discogs_url) in discogs_artist_set:
+        discogs_url = discogs_artist_url(discogs_artist)
+        if a_gid in discogs_artist_set:
             if verbose:
                 out(u'  already linked earlier (probably got removed by some editor!')
             if (a_gid, discogs_url) not in bot_blacklist:
