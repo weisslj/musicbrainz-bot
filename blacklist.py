@@ -6,6 +6,9 @@ from HTMLParser import HTMLParser
 
 from utils import extract_mbid
 
+def amazon_links():
+    return wiki_get_rows('http://wiki.musicbrainz.org/Bots/Blacklist/Amazon_Links', 'release')
+
 def discogs_links(entity):
     return wiki_get_rows('http://wiki.musicbrainz.org/Bots/Blacklist/Discogs_Links', entity)
 

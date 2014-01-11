@@ -121,7 +121,10 @@ def amazon_url_asin(url):
     m = re.search(r'(?:/|\ba=)([A-Z0-9]{10})(?:[/?&%#]|$)', url)
     return m.group(1) if m else None
 
+bot_blacklist = blacklist.amazon_links()
+bot_blacklist_new = set()
 asin_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_asin_set'''))
+asin_set |= bot_blacklist
 asin_missing = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_missing'''))
 asin_nocover = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_nocover'''))
 asin_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_problematic'''))
@@ -340,6 +343,8 @@ def main(verbose=False):
             if (gid, url) in asin_set:
                 if verbose:
                     colored_out(bcolors.WARNING, u' * already linked earlier (probably got removed by some editor!)')
+                if (gid, url) not in bot_blacklist:
+                    bot_blacklist_new.add((gid, url))
                 continue
             text = u'%s lookup for “%s” (country: %s), ' % (barcode_type(barcode), barcode, country)
             if catnr:
@@ -385,6 +390,8 @@ def main(verbose=False):
                 normal_edits_left -= 1
             except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
                 out(e)
+    if bot_blacklist_new:
+        out(blacklist.wiki_markup(bot_blacklist_new, 'release', db))
 
 if __name__ == '__main__':
     parser = OptionParser()
