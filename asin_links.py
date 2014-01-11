@@ -15,6 +15,7 @@ from editing import MusicBrainzClient
 import config as cfg
 from utils import out, program_string, asciipunct, colored_out, bcolors
 from mbbot.utils.pidfile import PIDFile
+import blacklist
 
 '''
 CREATE TABLE bot_asin_set (
