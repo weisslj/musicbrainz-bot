@@ -87,6 +87,8 @@ WITH
         SELECT r.id, discogs_url.url as discogs_url, amz_url.url AS amz_url
         FROM release r
             JOIN release_meta rm ON rm.id = r.id
+            JOIN release_group rg ON r.release_group = rg.id
+            LEFT JOIN release_group_primary_type rg_type ON rg.type = rg_type.id
             LEFT JOIN release_country rc ON rc.release = r.id
             LEFT JOIN area ON area.id = rc.country
             LEFT JOIN iso_3166_1 iso ON iso.area = area.id
@@ -114,10 +116,10 @@ WITH
                 EXISTS (SELECT 1
                     FROM artist_credit_name acn
                     JOIN artist a ON acn.artist = a.id
-                    JOIN area c ON a.area = c.id
-                    JOIN iso_3166_1 iso ON iso.area = area.id
+                    LEFT JOIN iso_3166_1 iso_artist ON iso_artist.area = a.area
                     WHERE r.artist_credit = acn.artist_credit
-                        AND (iso.code = 'FR' OR a.id = 1) AND (a.id <> 1 OR iso.code = 'FR')
+                        /* (FR release & VA) OR FR artist */
+                        AND ((iso.code = 'FR' AND a.id = 1) OR iso_artist.code = 'FR')
                 )
                 /* Discogs link should only be linked to this release */
                 AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = discogs_url.id AND l.entity0 <> r.id)
@@ -130,20 +132,27 @@ WITH
                 AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = encycl_link.entity1 AND l.entity0 <> r.id)
                 /* Discogs URL required*/
                 AND discogs_url.url IS NOT NULL
-                /* Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
-                AND (rs.name IN ('Promotion','Bootleg')
-                    OR date_year < 1980
+                /* Various filter to limit the scope /*Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
+                AND (
+                    /* promotion and bootleg */
+                    rs.name IN ('Promotion','Bootleg')
+                    /* non digital singles */
+                    OR (EXISTS (SELECT 1 FROM medium m JOIN medium_format mf ON m.format = mf.id WHERE m.release = r.id AND mf.name <> 'Digital Media') AND rg_type.name in ('Single'))
+                    /* release before 1996 */
+                    OR date_year < 1996
+                    /* release without barcode */
                     OR r.barcode = ''
                     /* if barcode exists, either we have ASIN or release has not been updated since a few days (to be sure asin_links scripts has run on it) */
                     OR (r.barcode IS NOT NULL AND (amz_url.url IS NOT NULL OR r.last_updated < now() - INTERVAL '5 DAY'))
+                    /* release with an encyclopedique link */
                     OR encycl_link.url IS NOT NULL
                 )
             ))
     )
 SELECT r.id, r.gid, r.name, tr.discogs_url, tr.amz_url, ac.name AS artist, r.barcode, b.processed
 FROM releases_wo_coverart tr
-JOIN s_release r ON tr.id = r.id
-JOIN s_artist_credit ac ON r.artist_credit=ac.id
+JOIN release r ON tr.id = r.id
+JOIN artist_credit ac ON r.artist_credit=ac.id
 LEFT JOIN bot_discogs_amz_cover_art b ON r.gid = b.gid
 ORDER BY b.processed NULLS FIRST, r.artist_credit, r.name
 LIMIT 100
@@ -163,7 +172,9 @@ def amz_get_info(url):
     try:
         root = amazon_api.item_lookup(asin, **params)
     except amazonproduct.errors.InvalidParameterValue, e:
-        return None
+        return (None, None)
+    except amazonproduct.errors.AWSError, e:
+        return (None, None)
     item = root.Items.Item
     if not 'LargeImage' in item.__dict__:
         return (None, None)
