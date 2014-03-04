@@ -130,9 +130,9 @@ WITH
                                     AND l.link IN (SELECT id FROM link WHERE link_type = 77))
                 /* Encylopedisque link should only be linked to this release */
                 AND NOT EXISTS (SELECT 1 FROM l_release_url l WHERE l.entity1 = encycl_link.entity1 AND l.entity0 <> r.id)
-                /* Discogs URL required*/
+                /* Discogs URL required */
                 AND discogs_url.url IS NOT NULL
-                /* Various filter to limit the scope /*Promotion or Bootleg OR release_year < 1980 OR barcode and Amazon => OK */
+                /* Various filter to limit the scope */
                 AND (
                     /* promotion and bootleg */
                     rs.name IN ('Promotion','Bootleg')
