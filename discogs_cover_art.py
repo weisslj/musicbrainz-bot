@@ -5,6 +5,8 @@ import os
 import re
 import urllib2
 import sqlalchemy
+import oauth2
+import tempfile
 from PIL import Image
 from cStringIO import StringIO
 import time
@@ -57,6 +59,9 @@ mb = MusicBrainzClient(cfg_caa.MB_USERNAME, cfg_caa.MB_PASSWORD, cfg_caa.MB_SITE
 
 discogs.user_agent = 'MusicBrainzBot/0.1 +https://github.com/murdos/musicbrainz-bot'
 
+consumer = oauth2.Consumer(cfg.DISCOGS_OAUTH_CONSUMER_KEY, cfg.DISCOGS_OAUTH_CONSUMER_SECRET)
+token_obj = oauth2.Token(cfg.DISCOGS_OAUTH_TOKEN_KEY, cfg.DISCOGS_OAUTH_TOKEN_SECRET)
+discogs_oauth_client = oauth2.Client(consumer, token_obj)
 
 socket.setdefaulttimeout(300)
 
@@ -233,11 +238,18 @@ def submit_cover_art(release, url, types):
         colored_out(bcolors.NONE, " * skipping already submitted image '%s'" % (url,))
     else:
         colored_out(bcolors.OKGREEN, " * Adding " + ",".join(types) + (" " if len(types)>0 else "") + "cover art '%s'" % (url,))
-        img_file = urllib2.urlopen(url)
-        im = Image.open(StringIO(img_file.read()))
+        if 'discogs' in url:
+            resp, content = discogs_oauth_client.request(url, 'GET')
+        else:
+            content = urllib2.urlopen(url).read()
+        image_file = tempfile.NamedTemporaryFile(delete=False)
+        image_file.write(content)
+        image_file.close()
+        im = Image.open(image_file.name)
         edit_note = "'''Dimension''': %sx%s\n'''Source''': %s" % (im.size[0], im.size[1], url)
         time.sleep(5)
-        mb.add_cover_art(release, url, types, None, u'', edit_note, False)
+        mb.add_cover_art(release, image_file.name, types, None, u'', edit_note, False)
+        os.remove(image_file.name)
         save_processed(release, url)
 
 for release in db.execute(query):
