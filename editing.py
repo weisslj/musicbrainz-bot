@@ -57,20 +57,6 @@ def album_to_form(album):
     return form
 
 
-def extract_artist_mbid(url):
-    m = re.search(r'/artist/([0-9a-f-]{36})$', url)
-    if m is None:
-        return None
-    return m.group(1)
-
-
-def extract_release_mbid(url):
-    m = re.search(r'/release/([0-9a-f-]{36})$', url)
-    if m is None:
-        return None
-    return m.group(1)
-
-
 class MusicBrainzClient(object):
 
     def __init__(self, username, password, server="http://musicbrainz.org", editor_id=None):
@@ -131,6 +117,12 @@ class MusicBrainzClient(object):
             return 0
         return max_edits - int(re.sub(r'[^0-9]+', '', m.group(1)))
 
+    def _extract_mbid(self, entity_type):
+        m = re.search(r'/'+entity_type+r'/([0-9a-f-]{36})$', self.b.geturl())
+        if m is None:
+            raise Exception('unable to post edit')
+        return m.group(1)
+
     def add_release(self, album, edit_note, auto=False):
         form = album_to_form(album)
         self.b.open(self.url("/release/add"), urllib.urlencode(form))
@@ -141,10 +133,7 @@ class MusicBrainzClient(object):
         self._select_form("/release")
         print self.b.response().read()
         self.b.submit(name="save")
-        release_mbid = extract_release_mbid(self.b.geturl())
-        if not release_mbid:
-            raise Exception('unable to post edit')
-        return release_mbid
+        return self._extract_mbid('release')
 
     def add_artist(self, artist, edit_note, auto=False):
         self.b.open(self.url("/artist/create"))
@@ -153,10 +142,7 @@ class MusicBrainzClient(object):
         self.b["edit-artist.sort_name"] = artist.get('sort_name', guess_artist_sort_name(artist['name']))
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
         self.b.submit()
-        mbid = extract_artist_mbid(self.b.geturl())
-        if not mbid:
-            raise Exception('unable to post edit')
-        return mbid
+        return self._extract_mbid('artist')
 
     def _as_auto_editor(self, prefix, auto):
         try: self.b[prefix+"as_auto_editor"] = ["1"] if auto else []
