@@ -90,9 +90,12 @@ class MusicBrainzClient(object):
             query = '?' + urllib.urlencode([(k, v.encode('utf8')) for (k, v) in kwargs.items()])
         return self.server + path + query
 
+    def _select_form(self, action):
+        self.b.select_form(predicate=lambda f: f.method == "POST" and action in f.action)
+
     def login(self, username, password):
         self.b.open(self.url("/login"))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/login" in f.action)
+        self._select_form("/login")
         self.b["username"] = username
         self.b["password"] = password
         self.b.submit()
@@ -132,10 +135,10 @@ class MusicBrainzClient(object):
         form = album_to_form(album)
         self.b.open(self.url("/release/add"), urllib.urlencode(form))
         time.sleep(2.0)
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/release" in f.action)
+        self._select_form("/release")
         self.b.submit(name="step_editnote")
         time.sleep(2.0)
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/release" in f.action)
+        self._select_form("/release")
         print self.b.response().read()
         self.b.submit(name="save")
         release_mbid = extract_release_mbid(self.b.geturl())
@@ -145,7 +148,7 @@ class MusicBrainzClient(object):
 
     def add_artist(self, artist, edit_note, auto=False):
         self.b.open(self.url("/artist/create"))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/artist/create" in f.action)
+        self._select_form("/artist/create")
         self.b["edit-artist.name"] = artist['name']
         self.b["edit-artist.sort_name"] = artist.get('sort_name', guess_artist_sort_name(artist['name']))
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
@@ -170,7 +173,7 @@ class MusicBrainzClient(object):
 
     def add_url(self, entity_type, entity_id, link_type_id, url, edit_note='', auto=False):
         self.b.open(self.url("/edit/relationship/create_url", entity=entity_id, type=entity_type))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "create_url" in f.action)
+        self._select_form("create_url")
         self.b["ar.link_type_id"] = [str(link_type_id)]
         self.b["ar.url"] = str(url)
         self.b["ar.edit_note"] = edit_note.encode('utf8')
@@ -180,7 +183,7 @@ class MusicBrainzClient(object):
 
     def edit_artist(self, artist, update, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (artist['gid'],)))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         self.b.set_all_readonly(False)
         if 'area' in update:
             if self.b["edit-artist.area_id"] != '':
@@ -232,7 +235,7 @@ class MusicBrainzClient(object):
         join_phrases.append('')
 
         self.b.open(self.url("/artist/%s/credit/%d/edit" % (entity_id, int(credit_id))))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
 
         for i in range(len(ids)):
             for field in ['artist.id', 'artist.name', 'name', 'join_phrase']:
@@ -257,7 +260,7 @@ class MusicBrainzClient(object):
 
     def set_artist_type(self, entity_id, type_id, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (entity_id,)))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         if self.b["edit-artist.type_id"] != ['']:
             print " * already set, not changing"
             return
@@ -269,7 +272,7 @@ class MusicBrainzClient(object):
 
     def edit_url(self, entity_id, old_url, new_url, edit_note, auto=False):
         self.b.open(self.url("/url/%s/edit" % (entity_id,)))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         if self.b["edit-url.url"] != str(old_url):
             print " * value has changed, aborting"
             return
@@ -284,7 +287,7 @@ class MusicBrainzClient(object):
 
     def edit_work(self, work, update, edit_note, auto=False):
         self.b.open(self.url("/work/%s/edit" % (work['gid'],)))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         if 'type' in update:
             if self.b["edit-work.type_id"] != ['']:
                 print " * type already set, not changing"
@@ -307,7 +310,7 @@ class MusicBrainzClient(object):
 
     def edit_relationship(self, rel_id, entity0_type, entity1_type, old_link_type_id, new_link_type_id, attributes, begin_date, end_date, edit_note, auto=False):
         self.b.open(self.url("/edit/relationship/edit", id=str(rel_id), type0=entity0_type, type1=entity1_type))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         if self.b["ar.link_type_id"] == [str(new_link_type_id)] and new_link_type_id != old_link_type_id:
             print " * already set, not changing"
             return
@@ -328,7 +331,7 @@ class MusicBrainzClient(object):
 
     def remove_relationship(self, rel_id, entity0_type, entity1_type, edit_note):
         self.b.open(self.url("/edit/relationship/delete", id=str(rel_id), type0=entity0_type, type1=entity1_type))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         self.b["confirm.edit_note"] = edit_note.encode('utf8')
         self.b.submit()
         self._check_response(None)
@@ -348,7 +351,7 @@ class MusicBrainzClient(object):
 
     def _edit_release_information(self, entity_id, attributes, edit_note, auto=False):
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         changed = False
         for k, v in attributes.items():
             self.b.form.find_control(k).readonly = False
@@ -364,7 +367,7 @@ class MusicBrainzClient(object):
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_editnote")
         page = self.b.response().read()
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         try:
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
@@ -384,11 +387,11 @@ class MusicBrainzClient(object):
         """
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
 
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_tracklist")
 
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         for medium_no, medium in enumerate(mediums):
             if 'position' in medium:
                 self.b["mediums.%s.position" % medium_no] = medium['position']
@@ -423,7 +426,7 @@ class MusicBrainzClient(object):
 
         self.b.submit(name="step_editnote")
         page = self.b.response().read()
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         try:
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
@@ -447,11 +450,11 @@ class MusicBrainzClient(object):
     def set_release_medium_format(self, entity_id, medium_number, old_format_id, new_format_id, edit_note, auto=False):
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
 
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         self.b["barcode_confirm"] = ["1"]
         self.b.submit(name="step_tracklist")
 
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         attributes = {
             "mediums.%s.format_id" % (medium_number-1): [[str(old_format_id) if old_format_id is not None else ''], [str(new_format_id)]]
         }
@@ -473,7 +476,7 @@ class MusicBrainzClient(object):
             print " * has a discid => medium format can't be set to a format that can't have disc IDs"
             return
 
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         try:
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
@@ -494,7 +497,7 @@ class MusicBrainzClient(object):
         edit.'''
         self.b.open(self.url("/user/%s/edits" % (self.username,)))
         page = self.b.response().read()
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
+        self._select_form("/edit")
         edits = re.findall(r'<h2><a href="'+self.server+r'/edit/([0-9]+).*?<div class="edit-details">(.*?)</div>', page, re.S)
         for i, (edit_nr, text) in enumerate(edits):
             if identify(edit_nr, text):
@@ -505,7 +508,7 @@ class MusicBrainzClient(object):
     def cancel_edit(self, edit_nr, edit_note=u''):
         self.b.open(self.url("/edit/%s/cancel" % (edit_nr,)))
         page = self.b.response().read()
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "/cancel" in f.action)
+        self._select_form("/cancel")
         if edit_note:
             self.b['confirm.edit_note'] = edit_note.encode('utf8')
         self.b.submit()
@@ -551,7 +554,7 @@ class MusicBrainzClient(object):
         attempts = 0
         while True:
             try:
-                self.b.select_form(predicate=lambda f: f.method == "POST" and "archive.org" in f.action)
+                self._select_form("archive.org")
                 self.b.add_file(open(localFile))
                 # Insert fields from ws/js, simulating what's done in javascript
                 for key, value in postfields.iteritems():
@@ -573,7 +576,7 @@ class MusicBrainzClient(object):
         self.b.back(2)
         # Will probably fail. Solution is to install patched mechanize:
         # http://stackoverflow.com/questions/9249996/mechanize-cannot-read-form-with-submitcontrol-that-is-disabled-and-has-no-value
-        self.b.select_form(predicate=lambda f: f.method == "POST" and "add-cover-art" in f.action)
+        self._select_form("add-cover-art")
         self.b.set_all_readonly(False)
         try: self.b['add-cover-art.as_auto_editor'] = 1 if auto else 0
         except mechanize._form.ControlNotFoundError: pass
