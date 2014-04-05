@@ -156,16 +156,21 @@ class MusicBrainzClient(object):
             else:
                 return False
         return True
+    def edit_note_and_auto_editor_and_submit_and_check_response(self, prefix, auto, edit_note, already_done_msg='default'):
+        self.b[prefix+"edit_note"] = edit_note.encode('utf8')
+        self._as_auto_editor(prefix, auto)
+        self.b.submit()
+        if already_done_msg!='default':
+            return self._check_response(already_done_msg)
+        else:
+            return self._check_response()
 
     def add_url(self, entity_type, entity_id, link_type_id, url, edit_note='', auto=False):
         self.b.open(self.url("/edit/relationship/create_url", entity=entity_id, type=entity_type))
         self._select_form("create_url")
         self.b["ar.link_type_id"] = [str(link_type_id)]
         self.b["ar.url"] = str(url)
-        self.b["ar.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("ar.", auto)
-        self.b.submit()
-        return self._check_response("already exists")
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('ar.',auto,edit_note,'already exists')
 
     def _update_entity_if_not_set(self, update, entity_dict, entity_type, item, suffix="_id", utf8ize=False, inarray=False):
         if item in update:
@@ -206,11 +211,7 @@ class MusicBrainzClient(object):
                 return
         if not self._update_entity_if_not_set(update,artist,'artist', 'comment','',utf8ize=True):
             return
-
-        self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("edit-artist.", auto)
-        self.b.submit()
-        return self._check_response()
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('edit-artist.',auto,edit_note)
 
     def edit_artist_credit(self, entity_id, credit_id, ids, names, join_phrases, edit_note):
         assert len(ids) == len(names) == len(join_phrases)+1
@@ -247,10 +248,7 @@ class MusicBrainzClient(object):
             print " * already set, not changing"
             return
         self.b["edit-artist.type_id"] = [str(type_id)]
-        self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("edit-artist.", auto)
-        self.b.submit()
-        return self._check_response()
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('edit-artist.',auto,edit_note)
 
     def edit_url(self, entity_id, old_url, new_url, edit_note, auto=False):
         self.b.open(self.url("/url/%s/edit" % (entity_id,)))
@@ -262,10 +260,7 @@ class MusicBrainzClient(object):
             print " * already set, not changing"
             return
         self.b["edit-url.url"] = str(new_url)
-        self.b["edit-url.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("edit-url.", auto)
-        self.b.submit()
-        return self._check_response()
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('edit-url.',auto,edit_note)
 
     def edit_work(self, work, update, edit_note, auto=False):
         self.b.open(self.url("/work/%s/edit" % (work['gid'],)))
@@ -275,11 +270,7 @@ class MusicBrainzClient(object):
                 return
         if not self._update_entity_if_not_set(update,work,'work','comment','',utf8ize=True):
             return
-
-        self.b["edit-work.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("edit-work.", auto)
-        self.b.submit()
-        return self._check_response()
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('edit-work.',auto,edit_note)
 
     def edit_relationship(self, rel_id, entity0_type, entity1_type, old_link_type_id, new_link_type_id, attributes, begin_date, end_date, edit_note, auto=False):
         self.b.open(self.url("/edit/relationship/edit", id=str(rel_id), type0=entity0_type, type1=entity1_type))
@@ -297,10 +288,7 @@ class MusicBrainzClient(object):
             self.b["ar.period.begin_date."+k] = str(v)
         for k, v in end_date.items():
             self.b["ar.period.end_date."+k] = str(v)
-        self.b["ar.edit_note"] = edit_note.encode('utf8')
-        self._as_auto_editor("ar.", auto)
-        self.b.submit()
-        return self._check_response("exists with these attributes")
+        return self.edit_note_and_auto_editor_and_submit_and_check_response('ar.',auto,edit_note, "exists with these attributes")
 
     def remove_relationship(self, rel_id, entity0_type, entity1_type, edit_note):
         self.b.open(self.url("/edit/relationship/delete", id=str(rel_id), type0=entity0_type, type1=entity1_type))
