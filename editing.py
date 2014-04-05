@@ -166,7 +166,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if "already exists" not in page:
                 raise Exception('unable to post edit')
             else:
@@ -222,7 +222,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
             else:
@@ -257,7 +257,7 @@ class MusicBrainzClient(object):
         self.b.submit()
         page = self.b.response().read()
 
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
             else:
@@ -276,7 +276,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
             else:
@@ -298,7 +298,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if "any changes to the data already present" not in page:
                 raise Exception('unable to post edit')
             else:
@@ -328,7 +328,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if 'any changes to the data already present' not in page:
                 raise Exception('unable to post edit')
             else:
@@ -356,7 +356,7 @@ class MusicBrainzClient(object):
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             if "exists with these attributes" not in page:
                 raise Exception('unable to post edit')
             else:
@@ -369,7 +369,7 @@ class MusicBrainzClient(object):
         self.b["confirm.edit_note"] = edit_note.encode('utf8')
         self.b.submit()
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             raise Exception('unable to post edit')
 
     def merge(self, entity_type, entity_ids, target_id, edit_note):
@@ -384,7 +384,7 @@ class MusicBrainzClient(object):
             params['merge.merging.%s' % idx] = val
         self.b.open(self.url("/%s/merge" % entity_type), urllib.urlencode(params))
         page = self.b.response().read()
-        if "Thank you, your edit has been" not in page:
+        if "Thank you, your " not in page:
             raise Exception('unable to post edit')
 
     def _edit_release_information(self, entity_id, attributes, edit_note, auto=False):
