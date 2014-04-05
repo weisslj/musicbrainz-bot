@@ -167,50 +167,46 @@ class MusicBrainzClient(object):
         self.b.submit()
         return self._check_response("already exists")
 
+    def _update_entity_if_not_set(self, update, entity_dict, entity_type, item, suffix="_id", utf8ize=False, inarray=False):
+        if item in update:
+            key = "edit-"+entity_type+"."+item+suffix
+            if self.b[key] != (inarray and [''] or ''):
+                print " * "+item+" already set, not changing"
+                return False
+            val = (
+                utf8ize and entity_dict[item].encode('utf-8') or str(entity_dict[item]))
+            self.b[key] = (inarray and [val] or val)
+        return True
+
+    def _update_artist_date_if_not_set(self, update, artist, item_prefix):
+        item = item_prefix+'_date'
+        if item in update:
+            prefix = "edit-artist.period."+item
+            if self.b[prefix+".year"]:
+                print " * "+item.replace('_',' ')+" year already set, not changing"
+                return False
+            self.b[prefix+".year"] = str(artist[item+'_year'])
+            if artist[item+'_month']:
+                self.b[prefix+".month"] = str(artist[item+'_month'])
+                if artist[item+'_day']:
+                    self.b[prefix+".day"] = str(artist[item+'_day'])
+        return True
+
     def edit_artist(self, artist, update, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (artist['gid'],)))
         self._select_form("/edit")
         self.b.set_all_readonly(False)
-        if 'area' in update:
-            if self.b["edit-artist.area_id"] != '':
-                print " * area already set, not changing"
+        if not self._update_entity_if_not_set(update,artist,'artist','area'):
+            return
+        for item in ['type','gender']:
+            if not self._update_entity_if_not_set(update,artist,'artist',item, inarray=True):
                 return
-            self.b["edit-artist.area_id"] = str(artist['area'])
-        if 'type' in update:
-            if self.b["edit-artist.type_id"] != ['']:
-                print " * type already set, not changing"
+        for item_prefix in ['begin', 'end']:
+            if not self._update_artist_date_if_not_set(update, artist, item_prefix):
                 return
-            self.b["edit-artist.type_id"] = [str(artist['type'])]
-        if 'gender' in update:
-            if self.b["edit-artist.gender_id"] != ['']:
-                print " * gender already set, not changing"
-                return
-            self.b["edit-artist.gender_id"] = [str(artist['gender'])]
-        if 'begin_date' in update:
-            prefix = "edit-artist.period.begin_date"
-            if self.b[prefix+".year"]:
-                print " * begin date year already set, not changing"
-                return
-            self.b[prefix+".year"] = str(artist['begin_date_year'])
-            if artist['begin_date_month']:
-                self.b[prefix+".month"] = str(artist['begin_date_month'])
-                if artist['begin_date_day']:
-                    self.b[prefix+".day"] = str(artist['begin_date_day'])
-        if 'end_date' in update:
-            prefix = "edit-artist.period.end_date"
-            if self.b[prefix+".year"]:
-                print " * end date year already set, not changing"
-                return
-            self.b[prefix+".year"] = str(artist['end_date_year'])
-            if artist['end_date_month']:
-                self.b[prefix+".month"] = str(artist['end_date_month'])
-                if artist['end_date_day']:
-                    self.b[prefix+".day"] = str(artist['end_date_day'])
-        if 'comment' in update:
-            if self.b["edit-artist.comment"] != '':
-                print " * comment already set, not changing"
-                return
-            self.b["edit-artist.comment"] = artist['comment'].encode('utf-8')
+        if not self._update_entity_if_not_set(update,artist,'artist', 'comment','',utf8ize=True):
+            return
+
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
         self._as_auto_editor("edit-artist.", auto)
         self.b.submit()
@@ -274,21 +270,12 @@ class MusicBrainzClient(object):
     def edit_work(self, work, update, edit_note, auto=False):
         self.b.open(self.url("/work/%s/edit" % (work['gid'],)))
         self._select_form("/edit")
-        if 'type' in update:
-            if self.b["edit-work.type_id"] != ['']:
-                print " * type already set, not changing"
+        for item in ['type','language']:
+            if not self._update_entity_if_not_set(update,work,'work',item, inarray=True):
                 return
-            self.b["edit-work.type_id"] = [str(work['type'])]
-        if 'language' in update:
-            if self.b["edit-work.language_id"] != ['']:
-                print " * language already set, not changing"
-                return
-            self.b["edit-work.language_id"] = [str(work['language'])]
-        if 'comment' in update:
-            if self.b["edit-work.comment"] != '':
-                print " * comment already set, not changing"
-                return
-            self.b["edit-work.comment"] = work['comment'].encode('utf-8')
+        if not self._update_entity_if_not_set(update,work,'work','comment','',utf8ize=True):
+            return
+
         self.b["edit-work.edit_note"] = edit_note.encode('utf8')
         self._as_auto_editor("edit-work.", auto)
         self.b.submit()
