@@ -15,7 +15,6 @@ from utils import structureToString
 from datetime import datetime
 from mbbot.guesscase import guess_artist_sort_name
 
-
 def test_plain_jpeg(h, f):
     """Without this, imghdr only recognizes images with JFIF/Exif header. http://bugs.python.org/issue16512"""
     if h.startswith('\xff\xd8'):
@@ -156,6 +155,10 @@ class MusicBrainzClient(object):
             raise Exception('unable to post edit')
         return mbid
 
+    def _as_auto_editor(self, prefix, auto):
+        try: self.b[prefix+"as_auto_editor"] = ["1"] if auto else []
+        except mechanize.ControlNotFoundError: pass
+
     def _check_response(self, already_done_msg='any changes to the data already present'):
         page = self.b.response().read()
         if "Thank you, your " not in page:
@@ -171,8 +174,7 @@ class MusicBrainzClient(object):
         self.b["ar.link_type_id"] = [str(link_type_id)]
         self.b["ar.url"] = str(url)
         self.b["ar.edit_note"] = edit_note.encode('utf8')
-        try: self.b["ar.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("ar.", auto)
         self.b.submit()
         return self._check_response("already exists")
 
@@ -221,8 +223,7 @@ class MusicBrainzClient(object):
                 return
             self.b["edit-artist.comment"] = artist['comment'].encode('utf-8')
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
-        try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("edit-artist.", auto)
         self.b.submit()
         return self._check_response()
 
@@ -262,8 +263,7 @@ class MusicBrainzClient(object):
             return
         self.b["edit-artist.type_id"] = [str(type_id)]
         self.b["edit-artist.edit_note"] = edit_note.encode('utf8')
-        try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("edit-artist.", auto)
         self.b.submit()
         return self._check_response()
 
@@ -278,8 +278,7 @@ class MusicBrainzClient(object):
             return
         self.b["edit-url.url"] = str(new_url)
         self.b["edit-url.edit_note"] = edit_note.encode('utf8')
-        try: self.b["edit-url.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("edit-url.", auto)
         self.b.submit()
         return self._check_response()
 
@@ -302,8 +301,7 @@ class MusicBrainzClient(object):
                 return
             self.b["edit-work.comment"] = work['comment'].encode('utf-8')
         self.b["edit-work.edit_note"] = edit_note.encode('utf8')
-        try: self.b["edit-work.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("edit-work.", auto)
         self.b.submit()
         return self._check_response()
 
@@ -324,8 +322,7 @@ class MusicBrainzClient(object):
         for k, v in end_date.items():
             self.b["ar.period.end_date."+k] = str(v)
         self.b["ar.edit_note"] = edit_note.encode('utf8')
-        try: self.b["ar.as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("ar.", auto)
         self.b.submit()
         return self._check_response("exists with these attributes")
 
@@ -372,8 +369,7 @@ class MusicBrainzClient(object):
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
             raise Exception('unable to post edit')
-        try: self.b["as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("", auto)
         self.b.submit(name="save")
         page = self.b.response().read()
         if "Release information" not in page:
@@ -432,8 +428,7 @@ class MusicBrainzClient(object):
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
             raise Exception('unable to post edit')
-        try: self.b["as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("", auto)
         self.b.submit(name="save")
         page = self.b.response().read()
         if "Release information" not in page:
@@ -483,8 +478,7 @@ class MusicBrainzClient(object):
             self.b["edit_note"] = edit_note.encode('utf8')
         except mechanize.ControlNotFoundError:
             raise Exception('unable to post edit')
-        try: self.b["as_auto_editor"] = ["1"] if auto else []
-        except mechanize.ControlNotFoundError: pass
+        self._as_auto_editor("", auto)
         self.b.submit(name="save")
         page = self.b.response().read()
         if "Release information" not in page:
