@@ -156,6 +156,15 @@ class MusicBrainzClient(object):
             raise Exception('unable to post edit')
         return mbid
 
+    def _check_response(self, already_done_msg='any changes to the data already present'):
+        page = self.b.response().read()
+        if "Thank you, your " not in page:
+            if not already_done_msg or already_done_msg not in page:
+                raise Exception('unable to post edit')
+            else:
+                return False
+        return True
+
     def add_url(self, entity_type, entity_id, link_type_id, url, edit_note='', auto=False):
         self.b.open(self.url("/edit/relationship/create_url", entity=entity_id, type=entity_type))
         self.b.select_form(predicate=lambda f: f.method == "POST" and "create_url" in f.action)
@@ -165,13 +174,7 @@ class MusicBrainzClient(object):
         try: self.b["ar.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if "already exists" not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response("already exists")
 
     def edit_artist(self, artist, update, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (artist['gid'],)))
@@ -221,13 +224,7 @@ class MusicBrainzClient(object):
         try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if 'any changes to the data already present' not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response()
 
     def edit_artist_credit(self, entity_id, credit_id, ids, names, join_phrases, edit_note):
         assert len(ids) == len(names) == len(join_phrases)+1
@@ -255,14 +252,7 @@ class MusicBrainzClient(object):
 
         self.b["split-artist.edit_note"] = edit_note.encode('utf-8')
         self.b.submit()
-        page = self.b.response().read()
-
-        if "Thank you, your " not in page:
-            if 'any changes to the data already present' not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response()
 
     def set_artist_type(self, entity_id, type_id, edit_note, auto=False):
         self.b.open(self.url("/artist/%s/edit" % (entity_id,)))
@@ -275,13 +265,7 @@ class MusicBrainzClient(object):
         try: self.b["edit-artist.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if 'any changes to the data already present' not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response()
 
     def edit_url(self, entity_id, old_url, new_url, edit_note, auto=False):
         self.b.open(self.url("/url/%s/edit" % (entity_id,)))
@@ -297,13 +281,7 @@ class MusicBrainzClient(object):
         try: self.b["edit-url.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if "any changes to the data already present" not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response()
 
     def edit_work(self, work, update, edit_note, auto=False):
         self.b.open(self.url("/work/%s/edit" % (work['gid'],)))
@@ -327,13 +305,7 @@ class MusicBrainzClient(object):
         try: self.b["edit-work.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if 'any changes to the data already present' not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response()
 
     def edit_relationship(self, rel_id, entity0_type, entity1_type, old_link_type_id, new_link_type_id, attributes, begin_date, end_date, edit_note, auto=False):
         self.b.open(self.url("/edit/relationship/edit", id=str(rel_id), type0=entity0_type, type1=entity1_type))
@@ -355,22 +327,14 @@ class MusicBrainzClient(object):
         try: self.b["ar.as_auto_editor"] = ["1"] if auto else []
         except mechanize.ControlNotFoundError: pass
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            if "exists with these attributes" not in page:
-                raise Exception('unable to post edit')
-            else:
-                return False
-        return True
+        return self._check_response("exists with these attributes")
 
     def remove_relationship(self, rel_id, entity0_type, entity1_type, edit_note):
         self.b.open(self.url("/edit/relationship/delete", id=str(rel_id), type0=entity0_type, type1=entity1_type))
         self.b.select_form(predicate=lambda f: f.method == "POST" and "/edit" in f.action)
         self.b["confirm.edit_note"] = edit_note.encode('utf8')
         self.b.submit()
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            raise Exception('unable to post edit')
+        self._check_response(None)
 
     def merge(self, entity_type, entity_ids, target_id, edit_note):
         params = [('add-to-merge', id) for id in entity_ids]
@@ -383,9 +347,7 @@ class MusicBrainzClient(object):
         for idx, val in enumerate(entity_ids):
             params['merge.merging.%s' % idx] = val
         self.b.open(self.url("/%s/merge" % entity_type), urllib.urlencode(params))
-        page = self.b.response().read()
-        if "Thank you, your " not in page:
-            raise Exception('unable to post edit')
+        self._check_response(None)
 
     def _edit_release_information(self, entity_id, attributes, edit_note, auto=False):
         self.b.open(self.url("/release/%s/edit" % (entity_id,)))
