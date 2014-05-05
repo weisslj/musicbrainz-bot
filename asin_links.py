@@ -169,10 +169,16 @@ def gen_item_date_sort_key(date):
     def item_date_sort_key(item):
         attrs = item.ItemAttributes
         if 'ReleaseDate' in attrs.__dict__:
-            amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+            d = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+            amazon_date = (d.year, d.month, d.day)
         else:
-            amazon_date = datetime.datetime(1, 1, 1)
-        return abs(date - amazon_date)
+            amazon_date = (None, None, None)
+        def date_val_diff(ref_val, val):
+            if ref_val is None:
+                return None
+            val = 1 if val is None else val
+            return abs(ref_val - val)
+        return tuple(date_val_diff(a, b) for a, b in zip(date, amazon_date))
     return item_date_sort_key
 
 def amazon_get_asin(barcode, country, date):
@@ -278,7 +284,7 @@ def main(verbose=False):
                 colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
             mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
             try:
-                item = amazon_get_asin(barcode, country, mb_date)
+                item = amazon_get_asin(barcode, country, (year, month, day))
             except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
                 out(e)
                 continue
@@ -308,6 +314,7 @@ def main(verbose=False):
                 continue
             if 'ReleaseDate' in attrs.__dict__:
                 amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
+                mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
                 if abs(amazon_date - mb_date) > datetime.timedelta(days=365):
                     if verbose:
                         out('   * skip, has release date diff > 365 days')
