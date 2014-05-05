@@ -19,6 +19,7 @@ from mbbot.utils.pidfile import PIDFile
 import config as cfg
 import iso15924
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -122,7 +123,7 @@ def main(verbose=False):
         new_script_name = iso15924_to_mb[new_script]['name']
         new_script_id = iso15924_to_mb[new_script]['id']
         text = u'I’m setting this to “%s” because it is the predominant script on the tracklist (>40%%), and no other (determined) script is on the tracklist.' % new_script_name
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         if not old_script_id:
             old_script_id = ''
         try:

@@ -29,6 +29,7 @@ CREATE TABLE bot_bbc_reviews_set (
 );
 '''
 
+prog = program_string(__file__)
 bbc_sitemap_url = 'http://www.bbc.co.uk/music/sitemap-extended.xml.gz'
 bbc_sitemap = 'bbc_music_sitemap.xml.gz'
 cleanup_urls = ['http://wiki.musicbrainz.org/Community_Project/BBC_Review_Cleanup',
@@ -175,7 +176,7 @@ def main(verbose=False):
                 ' similar to the release name. If this is wrong,'\
                 ' please note it here and put the correct mapping in'\
                 ' the wiki [2].\n\n[1] %s\n[2] %s' % (title, bbc_sitemap_url, cleanup_urls[0])
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         try:
             out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid, review_url))
             mb.add_url('release_group', gid, 94, review_url, text, auto=False)

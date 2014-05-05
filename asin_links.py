@@ -46,6 +46,7 @@ CREATE TABLE bot_asin_catmismatch (
 );
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -390,7 +391,7 @@ def main(verbose=False):
             # make "Import" bold so it is easier recognizable
             re_bold_import = re.compile(ur'\b(imports?)\b', re.IGNORECASE)
             text = re_bold_import.sub(ur"'''\1'''", text)
-            text += '\n\n%s' % program_string(__file__)
+            text += '\n\n%s' % prog
             try:
                 colored_out(bcolors.OKGREEN, u' * http://musicbrainz.org/release/%s  ->  %s' % (gid,url))
                 mb.add_url('release', gid, 77, url, text)

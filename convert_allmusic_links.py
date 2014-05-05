@@ -154,6 +154,7 @@ class RoviClient(object):
         else:
             raise Exception('unknown data: %s' % str(data))
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -204,7 +205,7 @@ def main(verbose=False, force=False):
             out(e)
             continue
         text = u'Normalize to new format.\n%s\nOld: %s\nNew: %s' % (details, url, new_url)
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         try:
             out(u'%s -> %s' % (url, new_url))
             mb.edit_url(gid, url.encode('utf-8'), new_url.encode('utf-8'), text, auto=True)

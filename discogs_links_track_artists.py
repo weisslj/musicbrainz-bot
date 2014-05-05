@@ -31,6 +31,7 @@ CREATE TABLE bot_discogs_artist_problematic (
 );
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -200,7 +201,7 @@ def main(verbose=False):
         text += u'Discogs: “%s” by %s\n' % (discogs_track['title'], combine_names([x.name for x in discogs_artists]))
         text += u'MBrainz: “%s” by “%s”\n\n' % (t_name, ac_name)
         text += u'[1] http://musicbrainz.org/release/%s\n[2] %s' % (r_gid, url)
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         try:
             out(u'http://musicbrainz.org/artist/%s  ->  %s' % (a_gid,discogs_url))
             mb.add_url('artist', a_gid, 180, discogs_url.encode('utf-8'), text)

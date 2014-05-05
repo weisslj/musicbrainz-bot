@@ -40,6 +40,7 @@ CREATE TABLE bot_asin_remove_no_barcode (
 );
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -273,7 +274,7 @@ def main(verbose=False):
             text += u'\n\nASIN is already (with correct barcode) attached to:\n'
             for matched_release in matched:
                 text += u'%s\n' % format_release2(matched_release)
-            text += '\n\n%s' % program_string(__file__)
+            text += '\n\n%s' % prog
             rel_id, r, gid, barcode, name, ac = not_matched_release
             try:
                 out(u'http://musicbrainz.org/release/%s  remove  %s' % (gid,url))

@@ -34,6 +34,7 @@ CREATE TABLE bot_cc_problematic (
 );
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -176,14 +177,14 @@ def main(verbose=False):
                         db.execute("INSERT INTO bot_cc_problematic (gid,url) VALUES (%s,%s)", (gid,original_url))
                         continue
             text += u'I’m converting this relationship because I’ve found a link to %s in the linked page %s.' % (license_url_raw, url)
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         mb.add_url('release', gid, 301, license_url, text, auto=False)
         cc_processed.add((gid, original_url))
         db.execute("INSERT INTO bot_cc_processed (gid,url) VALUES (%s,%s)", (gid,original_url))
         if not mb.edit_relationship(rel_id, 'release', 'url', 84, link_id, {'license.0': []}, {}, {}, text, auto=False):
             if (gid, original_url) not in cc_removed:
                 text = u'Download and License relationship are already set, so this relationship is not necessary anymore.'
-                text += '\n\n%s' % program_string(__file__)
+                text += '\n\n%s' % prog
                 mb.remove_relationship(rel_id, 'release', 'url', text)
                 db.execute("INSERT INTO bot_cc_removed (gid,url) VALUES (%s,%s)", (gid,original_url))
                 cc_removed.add((gid, original_url))

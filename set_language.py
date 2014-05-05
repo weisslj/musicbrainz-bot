@@ -19,6 +19,7 @@ import config as cfg
 MIN_WORDS = 5
 MIN_WORD_LEN = 4
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -139,7 +140,7 @@ def main(verbose=False):
             out('%d/%d - %.2f%%' % (i+1, count, (i+1) * 100.0 / count))
         out(u'http://musicbrainz.org/release/%s -> %s' % (gid, new_language['name']))
         text = u'All words in release name/medium names/tracklist are from the %s dictionary, there are %d or more words and at least one of them is longer than %d characters. So I’m setting the language to “%s”.' % (new_language['name'], MIN_WORDS, MIN_WORD_LEN-1, new_language['name'])
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         if not old_language_id:
             old_language_id = ''
         try:

@@ -101,6 +101,7 @@ FROM release r
 WHERE r.barcode ~ %s
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -161,7 +162,7 @@ for artists in zeroinch.get_artists('/catalogue', cipher='all', page='1'):
                     if tracks2isrcs:
                         ws.submit_isrcs(tracks2isrcs)
                         text = u'From %s, added because of matching barcode %s.' % (url, barcode)
-                        text += '\n\n%s' % program_string(__file__)
+                        text += '\n\n%s' % prog
                         mb.add_edit_note(identify_isrc_edit(tracks2isrcs.values()), text)
                 if found:
                     db.execute("INSERT INTO bot_isrc_zeroinch_submitted (url) VALUES (%s)", url)

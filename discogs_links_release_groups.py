@@ -34,6 +34,7 @@ CREATE TABLE bot_discogs_release_group_problematic (
 );
 '''
 
+prog = program_string(__file__)
 engine = sqlalchemy.create_engine(cfg.MB_DB)
 db = engine.connect()
 db.execute('SET search_path TO musicbrainz, %s' % cfg.BOT_SCHEMA_DB)
@@ -155,7 +156,7 @@ def main(verbose=False):
         else:
             text = u'There is one Discogs link in this release group, and it points to this master URL.\n%s\n' % list(urls)[0]
         text += u'Also, the name of the Discogs master “%s” (by %s) is similar to the release group name.' % (master_name, master_artists)
-        text += '\n\n%s' % program_string(__file__)
+        text += '\n\n%s' % prog
         try:
             out(u'http://musicbrainz.org/release-group/%s  ->  %s' % (gid,master_url))
             mb.add_url('release_group', gid, 90, master_url, text, auto=True)
