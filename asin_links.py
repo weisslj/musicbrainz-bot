@@ -126,6 +126,7 @@ bot_blacklist = blacklist.amazon_links()
 bot_blacklist_new = set()
 asin_set = set((gid, url) for gid, url in db.execute('''SELECT gid, url FROM bot_asin_set'''))
 asin_set |= bot_blacklist
+asin_set = set((gid, amazon_url_asin(url)) for gid, url in asin_set)
 asin_missing = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_missing'''))
 asin_nocover = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_nocover'''))
 asin_problematic = set(gid for gid, in db.execute('''SELECT gid FROM bot_asin_problematic'''))
@@ -341,7 +342,7 @@ def main(verbose=False):
                         colored_out(bcolors.FAIL, u'   * Similarity too small: %s <-> %s' % (name, amazon_name))
                     db.execute("INSERT INTO bot_asin_problematic (gid) VALUES (%s)", gid)
                     continue
-            if (gid, url) in asin_set:
+            if (gid, item.ASIN) in asin_set:
                 if verbose:
                     colored_out(bcolors.WARNING, u' * already linked earlier (probably got removed by some editor!)')
                 if (gid, url) not in bot_blacklist:
