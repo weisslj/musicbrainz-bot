@@ -171,7 +171,7 @@ def gen_item_date_sort_key(date):
             amazon_date = datetime.datetime.strptime(str(attrs.ReleaseDate), '%Y-%m-%d')
         else:
             amazon_date = datetime.datetime(1, 1, 1)
-        return (abs(date - amazon_date), item)
+        return abs(date - amazon_date)
     return item_date_sort_key
 
 def amazon_get_asin(barcode, country, date):
