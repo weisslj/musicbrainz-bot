@@ -283,7 +283,6 @@ def main(verbose=False):
                 continue
             if verbose:
                 colored_out(bcolors.OKBLUE, u'%d/%d - %.2f%% - %s http://musicbrainz.org/release/%s %s %s' % (i+1, count, (i+1) * 100.0 / count, name, gid, barcode, country))
-            mb_date = datetime.datetime(year if year else 1, month if month else 1, day if day else 1)
             try:
                 item = amazon_get_asin(barcode, country, (year, month, day))
             except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
